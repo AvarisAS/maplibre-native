@@ -27,6 +27,7 @@ MLN_PUBLIC_GENERATED_STYLE_HEADERS = [
     "include/mln/style/layers/background_layer.hpp",
     "include/mln/style/layers/location_indicator_layer.hpp",
     "include/mln/style/light.hpp",
+    "include/mln/style/sky.hpp",
 ]
 
 MLN_PRIVATE_GENERATED_STYLE_HEADERS = [
@@ -67,6 +68,7 @@ MLN_GENERATED_STYLE_SOURCE = [
     "src/mln/style/layers/location_indicator_layer_properties.cpp",
     "src/mln/style/layers/location_indicator_layer.cpp",
     "src/mln/style/light.cpp",
+    "src/mln/style/sky.cpp",
 ]
 
 MLN_GENERATED_SHADER_HEADERS = [
@@ -354,6 +356,7 @@ MLN_CORE_SOURCE = [
     "src/mln/style/conversion/json.hpp",
     "src/mln/style/conversion/layer.cpp",
     "src/mln/style/conversion/light.cpp",
+    "src/mln/style/conversion/sky.cpp",
     "src/mln/style/conversion/terrain.cpp",
     "src/mln/style/conversion/position.cpp",
     "src/mln/style/conversion/property_value.cpp",
@@ -450,6 +453,9 @@ MLN_CORE_SOURCE = [
     "src/mln/style/light_impl.cpp",
     "src/mln/style/light_impl.hpp",
     "src/mln/style/light_observer.hpp",
+    "src/mln/style/sky_impl.cpp",
+    "src/mln/style/sky_impl.hpp",
+    "src/mln/style/sky_observer.hpp",
     "src/mln/style/observer.hpp",
     "src/mln/style/paint_property.hpp",
     "src/mln/style/parser.cpp",
@@ -746,6 +752,7 @@ MLN_CORE_HEADERS = [
     "include/mln/style/conversion/get_json_type.hpp",
     "include/mln/style/conversion/layer.hpp",
     "include/mln/style/conversion/light.hpp",
+    "include/mln/style/conversion/sky.hpp",
     "include/mln/style/conversion/terrain.hpp",
     "include/mln/style/conversion/position.hpp",
     "include/mln/style/conversion/property_value.hpp",

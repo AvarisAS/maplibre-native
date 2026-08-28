@@ -19,6 +19,7 @@ class FileSource;
 namespace style {
 
 class Light;
+class Sky;
 class Terrain;
 class Source;
 class Layer;
@@ -50,6 +51,13 @@ public:
     const Light* getLight() const;
 
     void setLight(std::unique_ptr<Light>);
+
+    // Sky
+    Sky* getSky();
+    const Sky* getSky() const;
+
+    // Passing nullptr removes the sky configuration.
+    void setSky(std::unique_ptr<Sky>);
 
     // Terrain
     Terrain* getTerrain();

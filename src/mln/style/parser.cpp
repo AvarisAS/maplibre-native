@@ -5,6 +5,7 @@
 #include <mln/style/conversion/source.hpp>
 #include <mln/style/conversion/layer.hpp>
 #include <mln/style/conversion/light.hpp>
+#include <mln/style/conversion/sky.hpp>
 #include <mln/style/conversion/terrain.hpp>
 #include <mln/style/conversion/sprite.hpp>
 #include <mln/style/conversion/transition_options.hpp>
@@ -111,6 +112,10 @@ StyleParseResult Parser::parse(const std::string& json) {
 
     if (document.HasMember("light")) {
         parseLight(document["light"]);
+    }
+
+    if (document.HasMember("sky")) {
+        parseSky(document["sky"]);
     }
 
     if (document.HasMember("terrain")) {
@@ -243,6 +248,17 @@ void Parser::parseLight(const JSValue& value) {
     }
 
     light = *converted;
+}
+
+void Parser::parseSky(const JSValue& value) {
+    conversion::Error error;
+    std::optional<Sky> converted = conversion::convert<Sky>(value, error);
+    if (!converted) {
+        Log::Warning(Event::ParseStyle, error.message);
+        return;
+    }
+
+    sky = std::move(*converted);
 }
 
 void Parser::parseTerrain(const JSValue& value) {
