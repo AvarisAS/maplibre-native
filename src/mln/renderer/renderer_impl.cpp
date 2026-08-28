@@ -510,6 +510,9 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
                 depthLayerGroup->upload(*uploadPass);
             }
         }
+        if (auto* sky = orchestrator.getSkyLayerGroup()) {
+            sky->upload(*uploadPass);
+        }
 
         // Give the render targets a chance to upload
         orchestrator.visitRenderTargets([&](RenderTarget& renderTarget) { renderTarget.upload(*uploadPass); });
@@ -669,6 +672,17 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
         });
     };
 
+    const auto drawableSkyPass = [&] {
+        if (auto* sky = orchestrator.getSkyLayerGroup()) {
+            const auto debugGroup(parameters.renderPass->createDebugGroup("sky"));
+            parameters.pass = RenderPass::Translucent;
+            parameters.depthRangeSize = 1 - (orchestrator.numLayerGroups() + 2) * PaintParameters::numSublayers *
+                                                PaintParameters::depthEpsilon;
+            parameters.currentLayer = static_cast<uint32_t>(orchestrator.numLayerGroups()) + 1;
+            sky->render(orchestrator, parameters);
+        }
+    };
+
     const auto drawableTranslucentPass = [&] {
         const auto debugGroup(parameters.renderPass->createDebugGroup("drawables-translucent"));
         parameters.pass = RenderPass::Translucent;
@@ -725,6 +739,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     }
     commonClearPass();
     context.bindGlobalUniformBuffers(*parameters.renderPass);
+    drawableSkyPass();
     drawableOpaquePass();
     drawableTranslucentPass();
     drawableDebugOverlays();

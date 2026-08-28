@@ -1,11 +1,13 @@
 #pragma once
 
+#include <mln/renderer/sky_pass.hpp>
 #include <mln/renderer/layer_group.hpp>
 #include <mln/actor/scheduler.hpp>
 #include <mln/renderer/renderer.hpp>
 #include <mln/renderer/render_source_observer.hpp>
 #include <mln/renderer/render_light.hpp>
 #include <mln/renderer/texture_pool.hpp>
+#include <mln/renderer/render_sky.hpp>
 #include <mln/style/image.hpp>
 #include <mln/style/source.hpp>
 #include <mln/style/layer.hpp>
@@ -110,6 +112,8 @@ public:
     bool removeLayerGroup(const LayerGroupBasePtr&);
     size_t numLayerGroups() const noexcept;
     void updateLayerIndex(LayerGroupBasePtr, int32_t newIndex);
+
+    LayerGroupBase* getSkyLayerGroup() const { return skyPass.getSkyLayerGroup(); }
 
     template <typename Func /* void(LayerGroupBase&) */>
     void visitLayerGroups(Func f) {
@@ -240,6 +244,7 @@ private:
     std::unordered_map<std::string, std::unique_ptr<RenderLayer>> renderLayers;
     RenderLight renderLight;
     std::unique_ptr<RenderTerrain> renderTerrain;
+    std::optional<RenderSky> renderSky;
 
     CrossTileSymbolIndex crossTileSymbolIndex;
     PlacementController placementController;
@@ -270,6 +275,7 @@ private:
     RenderItem::DebugLayerGroupMap debugLayerGroups;
 
     gfx::RenderingStats::FrameRenderedFeaturesMap frameRenderedFeatures;
+    SkyPass skyPass;
 };
 
 } // namespace mln

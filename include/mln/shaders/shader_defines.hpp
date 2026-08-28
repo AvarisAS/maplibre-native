@@ -164,6 +164,11 @@ enum {
     terrainLayerUBOCount
 };
 
+enum {
+    idSkyPropsUBO = getEnumValue(drawableReservedUBOCount, layerUBOStartId),
+    skyLayerUBOCount
+};
+
 // drawable SSBOs
 
 static constexpr uint32_t drawableSSBOStartId = std::max({static_cast<uint32_t>(backgroundLayerUBOCount),
@@ -176,7 +181,8 @@ static constexpr uint32_t drawableSSBOStartId = std::max({static_cast<uint32_t>(
                                                           static_cast<uint32_t>(lineLayerUBOCount),
                                                           static_cast<uint32_t>(rasterLayerUBOCount),
                                                           static_cast<uint32_t>(symbolLayerUBOCount),
-                                                          static_cast<uint32_t>(terrainLayerUBOCount)});
+                                                          static_cast<uint32_t>(terrainLayerUBOCount),
+                                                          static_cast<uint32_t>(skyLayerUBOCount)});
 
 enum {
 #if MLN_USE_FILL_EXTRUSION_INSTANCING
@@ -297,6 +303,7 @@ static constexpr uint32_t maxUBOCountPerShader = std::max({static_cast<uint32_t>
                                                            static_cast<uint32_t>(rasterUBOCount),
                                                            static_cast<uint32_t>(symbolUBOCount),
                                                            static_cast<uint32_t>(terrainUBOCount),
+                                                           static_cast<uint32_t>(skyLayerUBOCount),
                                                            static_cast<uint32_t>(wideVectorUBOCount)});
 
 static constexpr uint32_t maxSSBOCountPerLayer = layerUBOStartId - layerSSBOStartId;
@@ -411,6 +418,11 @@ static constexpr uint32_t maxTextureCountPerShader = std::max({static_cast<uint3
 enum {
     idBackgroundPosVertexAttribute,
     backgroundVertexAttributeCount
+};
+
+enum {
+    idSkyPosVertexAttribute,
+    skyVertexAttributeCount
 };
 
 enum {
@@ -606,6 +618,7 @@ static constexpr uint32_t maxAttributeCountPerShader = std::max({
     static_cast<uint32_t>(lineVertexAttributeCount),
     static_cast<uint32_t>(locationIndicatorVertexAttributeCount),
     static_cast<uint32_t>(rasterVertexAttributeCount),
+    static_cast<uint32_t>(skyVertexAttributeCount),
     static_cast<uint32_t>(symbolAttributeCount),
     static_cast<uint32_t>(terrainVertexAttributeCount),
     static_cast<uint32_t>(wideVectorAttributeCount),
