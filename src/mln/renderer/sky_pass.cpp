@@ -33,7 +33,7 @@ LayerGroupPtr makeFullscreenLayerGroup(gfx::Context& context,
         return nullptr;
     }
 
-    auto layerGroup = context.createLayerGroup(0, 1, std::string(name));
+    auto layerGroup = context.createLayerGroup(0, 1, std::string(name), false);
     if (!layerGroup) {
         return nullptr;
     }

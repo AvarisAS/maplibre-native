@@ -1226,7 +1226,7 @@ void RenderOrchestrator::updateLayers(gfx::ShaderRegistry& shaders,
     skyPass.update(shaders,
                    context,
                    state,
-                   paintParameters.staticData.backendSize,
+                   paintParameters.renderableSize,
                    paintParameters.pixelRatio,
                    treeParameters.sky);
 }
