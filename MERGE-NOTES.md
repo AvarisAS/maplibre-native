@@ -99,7 +99,17 @@ this fork can merge `main`.
   tile). Main thread only, as the renderer runs there on iOS. Core test:
   `TerrainElevation.QueryReturnsTheExaggeratedHeightOfTheLoadedDEM`
   (`test/renderer/terrain_runtime_layer.test.cpp`; 74/74 `Terrain*` tests pass on macOS Metal).
-- Not released yet: releases are batched (sky port and other engine work next). The XCFramework
-  was built locally with the workflow's bazel command and verified in the MarineCatch camp-app
-  through a local SPM package (`binaryTarget(path:)`, tag `7.0.0-avaris.2-local`). The next release
-  tag, `ios-v7.0.0-avaris.2`, carries it.
+- Released in `7.0.0-avaris.2` (below).
+
+## 7.0.0-avaris.2 (2026-11-05)
+
+- `avaris/sky` (head `58fc6531`, the hand port of sky, see above) merged into `avaris/main`
+  as `6e0e085a`, on top of `elevationAtCoordinate:` (`109ddb2e`).
+- Tests (macOS Metal CMake build, `build-macos-metal`): `mbgl-test-runner
+  --gtest_filter='*Sky*:*Terrain*'` passes 83/83.
+- Built by hand like `.1` (the repository has no `DISTRIBUTION_TOKEN` secret, so the workflow
+  cannot publish): the workflow's bazel command with `--embed_label=maplibre_ios_7.0.0-avaris.2`,
+  LICENSE.md added to the zip, `swift package compute-checksum`
+  `dec020b674eb9f1c65fff0d6f18229f91e5ae258756290c77defe6dd1742f21f`. Release asset and
+  Package.swift in AvarisAS/maplibre-native-distribution, tag `7.0.0-avaris.2`; this repository
+  is tagged `ios-v7.0.0-avaris.2` at the commit it was built from.
