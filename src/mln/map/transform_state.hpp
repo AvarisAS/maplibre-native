@@ -133,6 +133,10 @@ public:
     // Matrix
     void matrixFor(mat4&, const UnwrappedTileID&) const;
     void getProjMatrix(mat4& matrix, uint16_t nearZ = 1, bool aligned = false) const;
+    /// Near and far planes of maplibre-gl-js's fog matrix: the projection's far plane, with the
+    /// near plane moved out to where the view ray through the centre meets sea level. A fragment's
+    /// fog depth is its depth in [0, 1] between the two (gl-js mercator_transform `_fogMatrix`).
+    std::array<double, 2> getFogDepthRange() const;
 
     // Dimensions
     Size getSize() const;

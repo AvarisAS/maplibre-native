@@ -36,11 +36,17 @@ struct alignas(16) TerrainEvaluatedPropsUBO {
     /*  0 */ float4 unpack; // DEM unpack vector for the source's encoding
     /* 16 */ float exaggeration;
     /* 20 */ float elevation_offset;
-    /* 24 */ float pad1;
-    /* 28 */ float pad2;
-    /* 32 */
+    /* 24 */ float fog_near;
+    /* 28 */ float fog_far;
+    /* 32 */ float4 fog_color;
+    /* 48 */ float4 horizon_color;
+    /* 64 */ float fog_ground_blend;
+    /* 68 */ float horizon_fog_blend;
+    /* 72 */ float fog_ground_blend_opacity;
+    /* 76 */ float pad1;
+    /* 80 */
 };
-static_assert(sizeof(TerrainEvaluatedPropsUBO) == 32, "wrong size");
+static_assert(sizeof(TerrainEvaluatedPropsUBO) == 80, "wrong size");
 
 )";
 
@@ -65,6 +71,7 @@ struct FragmentStage {
     float4 position [[position, invariant]];
     float2 uv;
     float elevation;
+    float fog_depth;
 };
 
 FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
@@ -94,10 +101,19 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
     const float ele_delta = (float(vertx.pos.z) == 1.0) ? props.elevation_offset : 0.0;
     float4 position = drawable.matrix * float4(pos.x, pos.y, elevation - ele_delta, 1.0);
 
+    // Fog depth as maplibre-gl-js terrain.vertex computes it with u_fog_matrix: the same view
+    // with the near plane at sea level under the centre, depth in [0, 1]. Only the near plane
+    // differs from the drawing projection, so it follows from the eye depth (w) alone. Skirts
+    // take the surface's depth, as gl-js projects the fog without u_ele_delta.
+    const float eye_depth = (drawable.matrix * float4(pos.x, pos.y, elevation, 1.0)).w;
+    const float fog_depth = props.fog_far * (eye_depth - props.fog_near) /
+                            ((props.fog_far - props.fog_near) * max(eye_depth, 1e-6));
+
     return {
         .position  = position,
         .uv        = uv,
         .elevation = elevation,
+        .fog_depth = fog_depth,
     };
 }
 
@@ -115,7 +131,21 @@ half4 fragment fragmentMain(FragmentStage in [[stage_in]],
     // 1.0 - uv.y. Metal's NDC is Y-up, so the RTT is stored upright and the V must NOT
     // be flipped here - sampling 1.0 - uv.y flips the draped map vertically (north/south
     // swapped about the view). Sample uv.y directly on Metal.
-    return half4(mapTexture.sample(mapSampler, float2(in.uv.x, in.uv.y)));
+    const float4 surface_color = mapTexture.sample(mapSampler, float2(in.uv.x, in.uv.y));
+
+    // The sky's fog, blended in linear space as maplibre-gl-js terrain.fragment does.
+    if (props.fog_ground_blend_opacity > 0.0 && in.fog_depth > props.fog_ground_blend) {
+        const float gamma = 2.2;
+        const float4 surface_linear = pow(max(surface_color, 0.0), float4(gamma));
+        const float blend_color = smoothstep(0.0, 1.0, max((in.fog_depth - props.horizon_fog_blend) /
+                                                           (1.0 - props.horizon_fog_blend), 0.0));
+        const float4 fog_horizon_linear = mix(pow(props.fog_color, float4(gamma)),
+                                              pow(props.horizon_color, float4(gamma)), blend_color);
+        const float factor_fog = max(in.fog_depth - props.fog_ground_blend, 0.0) / (1.0 - props.fog_ground_blend);
+        return half4(pow(mix(surface_linear, fog_horizon_linear,
+                             pow(factor_fog, 2.0) * props.fog_ground_blend_opacity), float4(1.0 / gamma)));
+    }
+    return half4(surface_color);
 }
 )";
 };

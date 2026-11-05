@@ -1,5 +1,6 @@
 #pragma once
 
+#include <mln/renderer/render_sky.hpp>
 #include <unordered_map>
 #include <mln/renderer/render_pass.hpp>
 #include <mln/renderer/render_light.hpp>
@@ -85,6 +86,9 @@ public:
 
     /// Set when 3D terrain is enabled; used by layer tweakers to bind DEM elevation data
     RenderTerrain* terrain = nullptr;
+
+    /// The evaluated root `sky`, if the style has one; the terrain blends its fog into the drape.
+    const EvaluatedSky* sky = nullptr;
 
     /// (z, x including wrap, y, 1) of the drape render target currently being
     /// rendered into, zero otherwise; backends without per-pass global uniform

@@ -244,6 +244,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     parameters.symbolFadeChange = renderTreeParameters.symbolFadeChange;
     parameters.opaquePassCutoff = renderTreeParameters.opaquePassCutOff;
     parameters.terrain = orchestrator.getRenderTerrain();
+    parameters.sky = renderTreeParameters.sky ? &*renderTreeParameters.sky : nullptr;
     const auto& sourceRenderItems = renderTree.getSourceRenderItems();
 
     const auto& layerRenderItems = renderTree.getLayerRenderItemMap();

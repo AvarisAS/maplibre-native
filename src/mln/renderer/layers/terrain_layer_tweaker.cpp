@@ -6,6 +6,8 @@
 #include <mln/renderer/paint_parameters.hpp>
 #include <mln/renderer/render_terrain.hpp>
 #include <mln/shaders/terrain_layer_ubo.hpp>
+#include <mln/math/angles.hpp>
+#include <mln/style/sky_impl.hpp>
 #include <mln/shaders/shader_defines.hpp>
 #include <mln/util/constants.hpp>
 #include <mln/util/convert.hpp>
@@ -44,11 +46,23 @@ void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamet
 
     // Populate layer-level UBO with terrain properties
     auto& layerUniforms = layerGroup.mutableUniformBuffers();
-    const TerrainEvaluatedPropsUBO propsUBO = {.unpack = terrain->getDEMUnpackVector(),
-                                               .exaggeration = exaggeration,
-                                               .elevation_offset = elevationOffset,
-                                               .pad1 = 0.0f,
-                                               .pad2 = 0.0f};
+    TerrainEvaluatedPropsUBO propsUBO = {.unpack = terrain->getDEMUnpackVector(),
+                                         .exaggeration = exaggeration,
+                                         .elevation_offset = elevationOffset};
+    if (parameters.sky) {
+        const auto& sky = *parameters.sky;
+        const auto range = parameters.state.getFogDepthRange();
+        // maplibre-gl-js Sky.calculateFogBlendOpacity: no fog below 60 degrees of pitch, fading
+        // in up to 70.
+        const double pitch = util::rad2deg(parameters.state.getPitch());
+        propsUBO.fog_near = static_cast<float>(range[0]);
+        propsUBO.fog_far = static_cast<float>(range[1]);
+        propsUBO.fog_color = sky.get<style::SkyFogColor>();
+        propsUBO.horizon_color = sky.get<style::SkyHorizonColor>();
+        propsUBO.fog_ground_blend = sky.get<style::SkyFogGroundBlend>();
+        propsUBO.horizon_fog_blend = sky.get<style::SkyHorizonFogBlend>();
+        propsUBO.fog_ground_blend_opacity = static_cast<float>(std::clamp((pitch - 60.0) / 10.0, 0.0, 1.0));
+    }
     layerUniforms.createOrUpdate(idTerrainEvaluatedPropsUBO, &propsUBO, context);
 
 #if MLN_UBO_CONSOLIDATION

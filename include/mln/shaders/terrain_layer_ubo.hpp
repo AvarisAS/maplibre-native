@@ -1,6 +1,7 @@
 #pragma once
 
 #include <mln/shaders/layer_ubo.hpp>
+#include <mln/util/color.hpp>
 
 namespace mln {
 namespace shaders {
@@ -41,11 +42,19 @@ struct alignas(16) TerrainEvaluatedPropsUBO {
     /*  0 */ std::array<float, 4> unpack; // DEM unpack vector for the source's encoding
     /* 16 */ float exaggeration;
     /* 20 */ float elevation_offset;
-    /* 24 */ float pad1;
-    /* 28 */ float pad2;
-    /* 32 */
+    // Sky fog blended into the drape, as maplibre-gl-js terrain.fragment does. The near and far
+    // planes give the fog depth (see TransformState::getFogDepthRange); an opacity of 0 is no fog.
+    /* 24 */ float fog_near = 0.0f;
+    /* 28 */ float fog_far = 1.0f;
+    /* 32 */ Color fog_color = Color::white();
+    /* 48 */ Color horizon_color = Color::white();
+    /* 64 */ float fog_ground_blend = 1.0f;
+    /* 68 */ float horizon_fog_blend = 1.0f;
+    /* 72 */ float fog_ground_blend_opacity = 0.0f;
+    /* 76 */ float pad1 = 0.0f;
+    /* 80 */
 };
-static_assert(sizeof(TerrainEvaluatedPropsUBO) == 32);
+static_assert(sizeof(TerrainEvaluatedPropsUBO) == 80);
 
 } // namespace shaders
 } // namespace mln

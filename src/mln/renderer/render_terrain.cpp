@@ -1649,9 +1649,7 @@ void RenderTerrain::updateInstancedDepthUBO(PaintParameters& parameters) {
     const float elevationOffset = static_cast<float>(util::M2PI * util::EARTH_RADIUS_M / std::pow(2.0, zoom) / 5.0);
     const shaders::TerrainEvaluatedPropsUBO propsUBO = {.unpack = getDEMUnpackVector(),
                                                         .exaggeration = getExaggeration(),
-                                                        .elevation_offset = elevationOffset,
-                                                        .pad1 = 0.0f,
-                                                        .pad2 = 0.0f};
+                                                        .elevation_offset = elevationOffset};
 
     depthLg->visitDrawables([&](gfx::Drawable& drawable) {
         auto& u = drawable.mutableUniformBuffers();
