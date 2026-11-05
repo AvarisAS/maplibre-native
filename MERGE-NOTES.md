@@ -63,3 +63,17 @@ this fork can merge `main`.
   `terrain` from a terrarium `raster-dem` with exaggeration 1.5, pitched over Lofoten (68.2N 14.5E),
   on an iPhone 18 Pro simulator (iOS 27.2).
 - The repo's own terrain unit and render tests have not been run on this fork yet.
+
+## Avaris additions after 7.0.0-avaris.1
+
+- `-[MLNMapView elevationAtCoordinate:]` (Swift `elevation(at:)`): the exaggerated terrain height in
+  metres under a coordinate, or `nil` without terrain or before a DEM tile covering it has loaded.
+  The equivalent of GL JS `map.queryTerrainElevation(lngLat)`, backed by the existing core
+  `Renderer::queryTerrainElevation` (`RenderTerrain::getElevationAtLatLng`, deepest loaded DEM
+  tile). Main thread only, as the renderer runs there on iOS. Core test:
+  `TerrainElevation.QueryReturnsTheExaggeratedHeightOfTheLoadedDEM`
+  (`test/renderer/terrain_runtime_layer.test.cpp`; 74/74 `Terrain*` tests pass on macOS Metal).
+- Not released yet: releases are batched (sky port and other engine work next). The XCFramework
+  was built locally with the workflow's bazel command and verified in the MarineCatch camp-app
+  through a local SPM package (`binaryTarget(path:)`, tag `7.0.0-avaris.2-local`). The next release
+  tag, `ios-v7.0.0-avaris.2`, carries it.

@@ -6,6 +6,7 @@
 #include <mln/map/camera.hpp>
 #include <mln/map/map_options.hpp>
 #include <mln/map/mode.hpp>
+#include <mln/renderer/renderer.hpp>
 #include <mln/style/layers/line_layer.hpp>
 #include <mln/style/sources/geojson_source.hpp>
 #include <mln/style/style.hpp>
@@ -40,17 +41,22 @@ std::string terrainStyle(bool withLine) {
     return style + "]}";
 }
 
-std::string seaLevelDEMTile() {
+// A flat DEM tile in Terrain-RGB: height = (R * 65536 + G * 256 + B) * 0.1 - 10000
+std::string flatDEMTile(uint8_t r, uint8_t g, uint8_t b) {
     PremultipliedImage image({256, 256});
     for (uint32_t i = 0; i < 256 * 256; ++i) {
         uint8_t* px = image.data.get() + i * 4;
-        // Sea level in Terrain-RGB: (0 + 10000) / 0.1 = 100000 = 1 * 65536 + 134 * 256 + 160
-        px[0] = 1;
-        px[1] = 134;
-        px[2] = 160;
+        px[0] = r;
+        px[1] = g;
+        px[2] = b;
         px[3] = 255;
     }
     return encodePNG(image);
+}
+
+// Sea level in Terrain-RGB: (0 + 10000) / 0.1 = 100000 = 1 * 65536 + 134 * 256 + 160
+std::string seaLevelDEMTile() {
+    return flatDEMTile(1, 134, 160);
 }
 
 // Red pixels in the band where the line is (about 47 px west of the center, 16 px wide).
@@ -142,4 +148,31 @@ TEST(TerrainDrape, AStyleSwitchReplacesTheDrape) {
     EXPECT_EQ(0, test.renderRedInLineBand());
     test.map.getStyle().loadJSON(terrainStyle(true));
     EXPECT_GT(test.renderRedInLineBand(), 1000);
+}
+
+// The engine side of GL JS map.queryTerrainElevation (MLNMapView elevationAtCoordinate:): the
+// exaggerated height of the loaded DEM under a coordinate, and nothing without terrain.
+TEST(TerrainElevation, QueryReturnsTheExaggeratedHeightOfTheLoadedDEM) {
+    TerrainStyleChangeTest test(TerrainLoadMode::Quality);
+    // 100 m: (100 + 10000) / 0.1 = 101000 = 1 * 65536 + 138 * 256 + 136
+    test.dem = flatDEMTile(1, 138, 136);
+    std::string style = terrainStyle(false);
+    const std::string from = R"("exaggeration": 1.0)";
+    style.replace(style.find(from), from.size(), R"("exaggeration": 1.5)");
+    test.map.getStyle().loadJSON(style);
+    test.renderRedInLineBand();
+
+    Renderer* renderer = test.frontend.getRenderer();
+    ASSERT_NE(nullptr, renderer);
+    const auto elevation = renderer->queryTerrainElevation(LatLng{46.0, 10.0});
+    ASSERT_TRUE(elevation.has_value());
+    EXPECT_NEAR(150.0, *elevation, 0.5);
+
+    // Far outside the loaded DEM tiles: not loaded, so no answer rather than sea level
+    EXPECT_FALSE(renderer->queryTerrainElevation(LatLng{-40.0, -120.0}).has_value());
+
+    // Terrain off: no answer
+    test.map.getStyle().loadJSON(R"({"version": 8, "sources": {}, "layers": []})");
+    test.renderRedInLineBand();
+    EXPECT_FALSE(test.frontend.getRenderer()->queryTerrainElevation(LatLng{46.0, 10.0}).has_value());
 }

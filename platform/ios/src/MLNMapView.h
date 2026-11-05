@@ -562,6 +562,21 @@ MLN_EXPORT
     NS_SWIFT_NAME(setTerrain(sourceIdentifier:exaggeration:));
 
 /**
+ Returns the height of the rendered 3D terrain at a coordinate, in metres above sea level,
+ with the style's terrain exaggeration applied: the equivalent of GL JS
+ `map.queryTerrainElevation(lngLat)`.
+
+ The height is sampled from the deepest raster-dem tile currently loaded that covers the
+ coordinate, so it matches what the map draws. Returns `nil` when the style has no terrain or
+ no loaded elevation tile covers the coordinate yet. Call on the main thread.
+
+ @param coordinate The coordinate to sample.
+ @return The exaggerated terrain height in metres, or `nil`.
+ */
+- (nullable NSNumber *)elevationAtCoordinate:(CLLocationCoordinate2D)coordinate
+    NS_SWIFT_NAME(elevation(at:));
+
+/**
  Selects the 3D-terrain progressive-loading budget.
 
  This is a rendering/performance option, not a style property, so it does not affect

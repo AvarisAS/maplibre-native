@@ -4690,6 +4690,21 @@ static void *windowScreenContext = &windowScreenContext;
   return [self convertLatLng:MLNLatLngFromLocationCoordinate2D(coordinate) toPointToView:view];
 }
 
+- (nullable NSNumber *)elevationAtCoordinate:(CLLocationCoordinate2D)coordinate {
+  MLNAssertIsMainThread();
+  if (!CLLocationCoordinate2DIsValid(coordinate) || !_rendererFrontend) {
+    return nil;
+  }
+  mln::Renderer *renderer = _rendererFrontend->getRenderer();
+  if (!renderer) {
+    return nil;
+  }
+  // The renderer runs on the main thread on iOS, so the terrain query is safe here.
+  std::optional<double> elevation =
+      renderer->queryTerrainElevation(MLNLatLngFromLocationCoordinate2D(coordinate));
+  return elevation ? @(*elevation) : nil;
+}
+
 /// Converts a geographic coordinate to a point in the view’s coordinate system.
 - (CGPoint)convertLatLng:(mln::LatLng)latLng toPointToView:(nullable UIView *)view {
   // With 3D terrain, project onto the draped surface so annotation views, the user location
