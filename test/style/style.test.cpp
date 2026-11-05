@@ -288,6 +288,39 @@ TEST(Style, VisibilityExpressionRejectsOtherDependencies) {
     EXPECT_EQ(VisibilityType::Visible, layer->getVisibility());
 }
 
+// MLNStyle -setSkyProperties: changes the style's sky in place (GL JS map.setSky for the properties
+// given): same Sky object, the other properties kept, the style told to update; nothing reloads.
+TEST(Style, SkyPropertiesChangeInPlace) {
+    util::RunLoop loop;
+
+    struct UpdateCounter : public Observer {
+        int updates = 0;
+        void onUpdate() override { ++updates; }
+    } observer;
+
+    auto fileSource = std::make_shared<StubFileSource>();
+    Style::Impl style{fileSource, 1.0, {Scheduler::GetBackground(), {}}};
+    style.setObserver(&observer);
+    style.loadJSON(R"STYLE({"sky":{"sky-color":"blue","fog-ground-blend":0.58,"atmosphere-blend":0.85}})STYLE");
+    Sky* sky = style.getSky();
+    ASSERT_NE(nullptr, sky);
+    const int before = observer.updates;
+
+    rapidjson::GenericDocument<rapidjson::UTF8<>, rapidjson::CrtAllocator> level;
+    level.Parse("0.98");
+    const JSValue* levelValue = &level;
+    EXPECT_FALSE(sky->setProperty("fog-ground-blend", conversion::Convertible(levelValue)));
+    EXPECT_EQ(sky, style.getSky());
+    EXPECT_FLOAT_EQ(0.98f, sky->getFogGroundBlend().asConstant());
+    EXPECT_EQ(Color::blue(), sky->getSkyColor().asConstant());
+    EXPECT_FLOAT_EQ(0.85f, sky->getAtmosphereBlend().asConstant());
+    EXPECT_GT(observer.updates, before);
+
+    // An unknown property is an error and changes nothing.
+    EXPECT_TRUE(sky->setProperty("sky-colour", conversion::Convertible(levelValue)));
+    EXPECT_EQ(Color::blue(), sky->getSkyColor().asConstant());
+}
+
 TEST(Style, SkyPresenceAndReplacement) {
     util::RunLoop loop;
 

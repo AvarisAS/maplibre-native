@@ -110,6 +110,7 @@ private:
     /// Last terrain height reported under the map centre, so an unchanged surface does not
     /// post an observer message every frame.
     double lastReportedCenterElevation = 0.0;
+    double lastReportedMinElevation = 0.0;
     double lastReportedEyeElevation = std::numeric_limits<double>::quiet_NaN();
     double lastReportedTargetElevation = std::numeric_limits<double>::quiet_NaN();
 

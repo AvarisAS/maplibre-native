@@ -221,6 +221,10 @@ public:
     double getElevationForLatLng(const LatLng& latLng) const;
     /// As getElevationForLatLng, but empty where no loaded DEM tile covers the point (rather than 0).
     std::optional<double> findElevationForLatLng(const LatLng& latLng) const;
+    /// The lowest height (metres, exaggeration applied) in the deepest loaded DEM tile covering
+    /// the tile at `zoom` under `latLng`; 0 where none is loaded. gl-js
+    /// `Terrain.getMinTileElevationForLngLatZoom`.
+    double getMinTileElevationForLatLng(const LatLng& latLng, uint8_t zoom) const;
 
     /**
      * @brief Exaggerated terrain height (metres) at a geographic coordinate, sampled from the

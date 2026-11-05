@@ -39,7 +39,9 @@
 #include <mln/style/sources/raster_source.hpp>
 #include <mln/style/sources/vector_source.hpp>
 #include <mln/style/style.hpp>
+#include <mln/style/sky.hpp>
 #include <mln/style/terrain.hpp>
+#import "MLNConversion.h"
 
 #import "NSDate+MLNAdditions.h"
 
@@ -611,6 +613,41 @@ const MLNExceptionName MLNRedundantSourceIdentifierException =
   }
 
   return [[MLNTerrain alloc] initWithMBGLTerrain:*mbglTerrain];
+}
+
+// MARK: Style sky
+
+- (BOOL)setSkyProperties:(NSDictionary<NSString *, id> *)properties
+                   error:(NSError *_Nullable *_Nullable)outError {
+  // Validate every property against a scratch sky first, so a bad value changes nothing.
+  mln::style::Sky probe;
+  for (NSString *name in properties) {
+    if (auto error = probe.setProperty(name.UTF8String,
+                                       mln::style::conversion::makeConvertible(properties[name]))) {
+      if (outError) {
+        NSString *message = [NSString stringWithFormat:@"Sky property %@: %s", name, error->message.c_str()];
+        *outError = [NSError errorWithDomain:MLNErrorDomain
+                                        code:MLNErrorCodeUnknown
+                                    userInfo:@{NSLocalizedDescriptionKey : message}];
+      }
+      return NO;
+    }
+  }
+  mln::style::Sky *sky = self.rawStyle->getSky();
+  if (!sky) {
+    self.rawStyle->setSky(std::make_unique<mln::style::Sky>());
+    sky = self.rawStyle->getSky();
+  }
+  for (NSString *name in properties) {
+    sky->setProperty(name.UTF8String, mln::style::conversion::makeConvertible(properties[name]));
+  }
+  return YES;
+}
+
+- (void)removeSky {
+  if (self.rawStyle->getSky()) {
+    self.rawStyle->setSky(nullptr);
+  }
 }
 
 - (NSString *)description {

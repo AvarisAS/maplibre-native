@@ -792,11 +792,24 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     // Report the rendered terrain height under the map centre. Only the render side has the
     // DEM, so this is the channel; whether the camera acts on it is the map's call
     // (Map::setCenterClampedToGround). Gated so a still map does not post a message a frame.
+    if (!orchestrator.getRenderTerrain() && lastReportedMinElevation != 0.0) {
+        // Terrain gone: the far plane is sea level's again.
+        lastReportedMinElevation = 0.0;
+        observer->onTerrainMinElevationChanged(0.0);
+    }
     if (auto* terrain = orchestrator.getRenderTerrain()) {
         const double centerElevation = terrain->getElevationForLatLng(updateParameters->transformState.getLatLng());
         if (std::abs(centerElevation - lastReportedCenterElevation) > 0.25) {
             lastReportedCenterElevation = centerElevation;
             observer->onTerrainCenterElevationChanged(centerElevation);
+        }
+        // And the lowest ground in the DEM tile under the centre, which the far plane has to
+        // reach (gl-js minElevationForCurrentTile): without it a seabed below sea level further
+        // out than the centre fell behind the far plane and the sea drew as the clear colour.
+        const double minElevation = terrain->getMinTileElevationForLatLng(state.getLatLng(), state.getIntegerZoom());
+        if (std::abs(minElevation - lastReportedMinElevation) > 0.25) {
+            lastReportedMinElevation = minElevation;
+            observer->onTerrainMinElevationChanged(minElevation);
         }
         // And under the eye: a camera dragged towards a slope rising in front of it ends up under
         // the ground (the steeper the pitch, the less it sits above the center), and the map

@@ -328,6 +328,38 @@ MLN_EXPORT
  */
 @property (nonatomic, nullable, strong) MLNTerrain *terrain;
 
+// MARK: Managing the Style's Sky
+
+/**
+ Changes properties of the style's sky in place, without reloading the style.
+
+ The keys are sky property names from the MapLibre Style Specification
+ (`sky-color`, `horizon-color`, `fog-color`, `fog-ground-blend`,
+ `horizon-fog-blend`, `sky-horizon-blend`, `atmosphere-blend`); the values are
+ what the style JSON would hold for them: a colour string, a number, or an
+ expression as a JSON array. Properties not named keep their values. If the
+ style has no sky, one is created with the given properties.
+
+ This is the equivalent of GL JS `map.setSky()` for the properties given: the
+ change is a style update and one repaint, like changing a layer's paint
+ property, so it suits a sky that follows the camera (set it while the camera
+ moves, not on every frame at rest).
+
+ Nothing is changed if any key is unknown or any value does not convert.
+
+ @param properties Sky property names and their values.
+ @param outError Upon return, if the properties could not be applied, an
+    `NSError` object describing the problem.
+ @return `YES` if all properties were applied.
+ */
+- (BOOL)setSkyProperties:(NSDictionary<NSString *, id> *)properties
+                   error:(NSError *_Nullable *_Nullable)outError;
+
+/**
+ Removes the style's sky, if it has one, without reloading the style.
+ */
+- (void)removeSky;
+
 // MARK: Localizing Map Content
 
 /**

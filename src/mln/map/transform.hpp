@@ -130,6 +130,7 @@ public:
 
     // Transform state
     const TransformState& getState() const { return state; }
+    void setMinElevationForCurrentTile(double meters) { state.setMinElevationForCurrentTile(meters); }
     bool isRotating() const { return state.isRotating(); }
     bool isScaling() const { return state.isScaling(); }
     bool isPanning() const { return state.isPanning(); }

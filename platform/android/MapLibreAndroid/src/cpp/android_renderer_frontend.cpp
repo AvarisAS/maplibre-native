@@ -67,6 +67,10 @@ public:
         delegate.invoke(&RendererObserver::onTerrainCenterElevationChanged, elevationMeters);
     }
 
+    void onTerrainMinElevationChanged(double elevationMeters) override {
+        delegate.invoke(&RendererObserver::onTerrainMinElevationChanged, elevationMeters);
+    }
+
     void onTerrainEyeElevationChanged(double elevationMeters) override {
         delegate.invoke(&RendererObserver::onTerrainEyeElevationChanged, elevationMeters);
     }

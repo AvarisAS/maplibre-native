@@ -131,28 +131,8 @@ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligne
         return;
     }
 
-    const double cameraToCenterDistance = getCameraToCenterDistance();
     const ScreenCoordinate offset = getCenterOffset();
-
-    const double limitedPitch = util::clamp(getPitch(), 0.0, maxMercatorHorizonAngle);
-    const double cameraToSeaLevelDistance = cameraToCenterDistance + std::abs(z) / std::cos(limitedPitch);
-
-    // Find the Z distance from the viewport center point
-    // [width/2 + offset.x, height/2 + offset.y] to the top edge; to point
-    // [width/2 + offset.x, 0] in Z units.
-    // 1 Z unit is equivalent to 1 horizontal px at the center of the map
-    // (the distance between[width/2, height/2] and [width/2 + 1, height/2])
-    // See https://github.com/mapbox/mapbox-gl-native/pull/15195 for details.
-    // See TransformState::fov description: fov = 2 * arctan((height / 2) / (height * 1.5)).
-    const double tanFovAboveCenter = (0.5 + (offset.y - frustumOffset.top()) / size.height) * 2.0 *
-                                     std::tan(fov / 2.0) *
-                                     (std::abs(std::cos(roll)) + std::abs(std::sin(roll)) * size.width / size.height);
-    const double tanMultiple = util::clamp(tanFovAboveCenter * std::tan(limitedPitch), 0.0, 0.99);
-    assert(tanMultiple < 1);
-    // Calculate z distance of the farthest fragment that should be rendered.
-    const double furthestDistance = cameraToSeaLevelDistance / (1 - tanMultiple);
-    // Add a bit extra to avoid precision problems when a fragment's distance is exactly `furthestDistance`
-    const double farZ = furthestDistance * 1.01;
+    const double farZ = getFarZ();
 
     // Make sure the camera state is up-to-date
     updateCameraState();
@@ -213,19 +193,54 @@ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligne
     }
 }
 
-std::array<double, 2> TransformState::getFogDepthRange() const {
+double TransformState::getLowestPlaneDistance(double limitedPitch) const {
     const double cameraToCenterDistance = getCameraToCenterDistance();
+    const double pixelsPerMeter = 1.0 / Projection::getMetersPerPixelAtLatitude(getLatLng().latitude(), getZoom());
+    // gl-js: max(d / 2, d + elevation * ppm / cos(pitch)). The centre's altitude is signed: a centre
+    // on the seabed brings sea level closer to the camera.
+    const double cameraToSeaLevelDistance = std::max(cameraToCenterDistance / 2.0,
+                                                     cameraToCenterDistance + z / std::cos(limitedPitch));
+    // In case of negative minimum elevation (under-the-sea terrain) use a lower plane, as gl-js
+    // does: the lowest of the centre, the DEM tile under it, and 100 m below the camera.
+    const double minRenderDistanceBelowCameraInMeters = 100.0;
+    const double cameraAltitude = altitudeMeters + cameraToCenterDistance * std::cos(getPitch()) / pixelsPerMeter;
+    const double minElevation = std::min(
+        {altitudeMeters, minElevationForCurrentTile, cameraAltitude - minRenderDistanceBelowCameraInMeters});
+    if (minElevation >= 0) {
+        return cameraToSeaLevelDistance;
+    }
+    return cameraToSeaLevelDistance - minElevation * pixelsPerMeter / std::cos(limitedPitch);
+}
+
+double TransformState::getFarZ() const {
     const ScreenCoordinate offset = getCenterOffset();
     const double limitedPitch = util::clamp(getPitch(), 0.0, maxMercatorHorizonAngle);
-    // Same far plane as getProjMatrix.
-    const double cameraToSeaLevelDistance = cameraToCenterDistance + std::abs(z) / std::cos(limitedPitch);
+    const double lowestPlane = getLowestPlaneDistance(limitedPitch);
+
+    // Find the Z distance from the viewport center point
+    // [width/2 + offset.x, height/2 + offset.y] to the top edge; to point
+    // [width/2 + offset.x, 0] in Z units.
+    // 1 Z unit is equivalent to 1 horizontal px at the center of the map
+    // (the distance between[width/2, height/2] and [width/2 + 1, height/2])
+    // See https://github.com/mapbox/mapbox-gl-native/pull/15195 for details.
+    // See TransformState::fov description: fov = 2 * arctan((height / 2) / (height * 1.5)).
     const double tanFovAboveCenter = (0.5 + (offset.y - frustumOffset.top()) / size.height) * 2.0 *
                                      std::tan(fov / 2.0) *
                                      (std::abs(std::cos(roll)) + std::abs(std::sin(roll)) * size.width / size.height);
     const double tanMultiple = util::clamp(tanFovAboveCenter * std::tan(limitedPitch), 0.0, 0.99);
-    const double farZ = cameraToSeaLevelDistance / (1 - tanMultiple) * 1.01;
-    const double nearZ = std::max(cameraToCenterDistance / 2.0, cameraToSeaLevelDistance);
-    return {{nearZ, farZ}};
+    assert(tanMultiple < 1);
+    // Calculate z distance of the farthest fragment that should be rendered, on the lowest plane.
+    // Add a bit extra to avoid precision problems when a fragment's distance is exactly `furthestDistance`
+    return lowestPlane / (1 - tanMultiple) * 1.01;
+}
+
+std::array<double, 2> TransformState::getFogDepthRange() const {
+    const double cameraToCenterDistance = getCameraToCenterDistance();
+    const double limitedPitch = util::clamp(getPitch(), 0.0, maxMercatorHorizonAngle);
+    // gl-js's fog matrix runs from sea level to the far plane.
+    const double cameraToSeaLevelDistance = std::max(cameraToCenterDistance / 2.0,
+                                                     cameraToCenterDistance + z / std::cos(limitedPitch));
+    return {{cameraToSeaLevelDistance, getFarZ()}};
 }
 
 void TransformState::updateCameraState() const {
