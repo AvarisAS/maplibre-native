@@ -111,5 +111,26 @@ this fork can merge `main`.
   cannot publish): the workflow's bazel command with `--embed_label=maplibre_ios_7.0.0-avaris.2`,
   LICENSE.md added to the zip, `swift package compute-checksum`
   `dec020b674eb9f1c65fff0d6f18229f91e5ae258756290c77defe6dd1742f21f`. Release asset and
-  Package.swift in AvarisAS/maplibre-native-distribution, tag `7.0.0-avaris.2`; this repository
-  is tagged `ios-v7.0.0-avaris.2` at the commit it was built from.
+  Package.swift in AvarisAS/maplibre-native-distribution, tag `7.0.0-avaris.2`. Built from
+  `6e0e085a`. As for `.1`, this repository carries no `ios-v*` tag: pushing one starts the
+  workflow, which builds for hours and then cannot publish without the secret.
+
+## 7.0.0-avaris.3 (2026-11-05)
+
+- `avaris/far-plane-sky` (head `6ba7c0b2`) merged into `avaris/main`:
+  - The far plane (and the fog's far end) comes from the lowest plane, as gl-js
+    `_calculateNearFarZIfNeeded`: min of the centre's signed altitude, the lowest height of the
+    DEM tile under the centre (`TransformState::setMinElevationForCurrentTile`, reported by the
+    renderer via `RendererObserver::onTerrainMinElevationChanged`) and 100 m below the camera.
+    The fog's near end is sea level under the centre (gl-js `_fogMatrix`).
+  - `-[MLNStyle setSkyProperties:error:]` / `-removeSky`: the sky changed in place, no reload
+    (gl-js `map.setSky`).
+  - `platform/ios/test/MLNTerrainTests.m` imported `<Mapbox.h>`; `ios_test` builds again.
+- Tests: `mbgl-test-runner --gtest_filter='*Sky*:*Terrain*'` 85/85 (macOS Metal);
+  `bazel test //platform/ios/test:ios_test --test_filter=MLNStyleTests` 22/22.
+- Built by hand like `.2` from `6ba7c0b2` (`--embed_label=maplibre_ios_7.0.0-avaris.3`, LICENSE.md
+  in the zip), checksum `8d186490ffe0a3c596cc620390fed2d7dbc6b6569f475419ae1d07f37fd9cdae`.
+  Release asset, Package.swift and tag `7.0.0-avaris.3` in AvarisAS/maplibre-native-distribution.
+- Seen against GL JS: at z12 and 72° over Vestfjorden the far ground towards the horizon is
+  still missing (the clear colour), where GL JS draws it. Most likely the mesh-tile cap
+  (`TerrainLoadBudget::maxMeshTiles`, 48 in Quality); GL JS has none. Not changed here.
