@@ -1,0 +1,76 @@
+# Avaris: build the iOS dynamic XCFramework from avaris/main and publish it as an
+# SPM binary target in AvarisAS/maplibre-native-distribution.
+#
+# Trigger: push a tag `ios-v<semver>-avaris.<n>` (for example ios-v7.0.0-avaris.2),
+# or run manually with a version.
+#
+# Needs one repository secret:
+#   DISTRIBUTION_TOKEN - a fine-grained PAT (or GitHub App token) with
+#                        contents:write on AvarisAS/maplibre-native-distribution.
+#
+# What it does, the same as the first release was made by hand (see MERGE-NOTES.md):
+#   1. bazel build //platform/ios:MapLibre.dynamic (Metal, opt, thin LTO, dSYMs)
+#   2. add LICENSE.md to the zip, compute `swift package compute-checksum`
+#   3. create release <version> in the distribution repo with the zip as asset
+#   4. rewrite Package.swift there to point at that asset + checksum, commit, tag <version>
+#      (SPM resolves the tag, so the tag must point at the commit with the new checksum)
+name: avaris-ios-release
+
+on:
+  push:
+    tags:
+      - "ios-v*-avaris.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "SPM version, e.g. 7.0.0-avaris.2"
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-and-publish:
+    runs-on: macos-15
+    timeout-minutes: 240
+    env:
+      DIST_REPO: AvarisAS/maplibre-native-distribution
+      ASSET: MapLibre.dynamic.xcframework.zip
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then v="$INPUT_VERSION"; else v="${GITHUB_REF_NAME#ios-v}"; fi
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+-avaris\.[0-9]+$ ]] || { echo "bad version $v"; exit 1; }
+          echo "version=$v" >> "$GITHUB_ENV"
+
+      - name: Build XCFramework
+        run: |
+          bazel build --compilation_mode=opt --//:renderer=metal \
+            --features=dead_strip,thin_lto --objc_enable_binary_stripping --apple_generate_dsym \
+            //platform/ios:MapLibre.dynamic --embed_label="maplibre_ios_${version}"
+          cp "$(bazel info --compilation_mode=opt bazel-bin)/platform/ios/MapLibre.dynamic.xcframework.zip" "$ASSET"
+          chmod u+w "$ASSET"
+          zip "$ASSET" LICENSE.md
+          echo "checksum=$(swift package compute-checksum "$ASSET")" >> "$GITHUB_ENV"
+
+      - name: Publish to distribution repo
+        env:
+          GH_TOKEN: ${{ secrets.DISTRIBUTION_TOKEN }}
+        run: |
+          git clone "https://x-access-token:${GH_TOKEN}@github.com/${DIST_REPO}.git" dist
+          cd dist
+          url="https://github.com/${DIST_REPO}/releases/download/${version}/${ASSET}"
+          sed -i '' -E "s|url: \"[^\"]*\"|url: \"${url}\"|; s|checksum: \"[^\"]*\"|checksum: \"${checksum}\"|" Package.swift
+          git config user.name "avaris-ci"; git config user.email "ci@avaris.no"
+          git commit -am "MapLibre iOS ${version} (maplibre-native ${GITHUB_SHA})"
+          git tag "${version}"
+          git push origin HEAD "${version}"
+          gh release create "${version}" "../${ASSET}" --repo "${DIST_REPO}" --prerelease \
+            --title "MapLibre iOS ${version}" \
+            --notes "Built from AvarisAS/maplibre-native@${GITHUB_SHA}. Checksum: ${checksum}"
