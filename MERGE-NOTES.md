@@ -45,6 +45,32 @@ Mercator below about z5. Sky was tried on its own.
 merge of upstream `main` that overlaps the same code. Trial merge into `avaris/main`: 147 files,
 335 hunks, with the same shader and transform overlap. Not clean, so not included.
 
+**Sky, ported by hand (branch `avaris/sky`, 2026-11-05).** Instead of merging #4534, its sky commits
+were cherry-picked onto `avaris/main` and cut down to what Mercator needs:
+
+- Taken: the root `sky` style property and its parsing (63142ef6), the sky gradient pass and
+  shaders for GL, Metal and Vulkan (69a78074, 6a1edf15, 15eff5d3), the sky unit and render
+  tests (6480a034, minus `sky/atmosphere-globe`).
+- Dropped: the globe atmosphere (shader, UBO, pass, `GlobeDepthPass`, projection transition),
+  because this fork has no globe. `atmosphere-blend` still parses and is ignored. Also dropped:
+  #4534's Metal/Vulkan layer-group depth-state changes (only the atmosphere used them; the
+  terrain line has its own), and the darwin `MLNSky` API (cbdba6c2). The style JSON is enough
+  for MLRN.
+- Added, since #4534 has none: the sky's fog on the terrain drape, ported from maplibre-gl-js
+  `terrain.vertex/fragment`. It uses `fog-color`, `horizon-color`, `fog-ground-blend` and
+  `horizon-fog-blend`, mixes in linear space, and fades in from 60 to 70 degrees of pitch
+  (`Sky.calculateFogBlendOpacity`). The fog depth comes from gl-js's fog matrix (near plane at
+  sea level under the centre, `TransformState::getFogDepthRange`). It is **Metal only**. GL,
+  Vulkan and WebGPU read a UBO prefix and draw no fog.
+- Tests (macOS Metal CMake build): `mbgl-test-runner --gtest_filter='*Sky*'` passes 6/6, and the
+  render tests `sky/basic` and `sky/zoom-expression` pass. No terrain+fog render test: the
+  headless runner draws terrain wrongly with or without sky, which is why upstream ignores
+  `terrain/*`. Fog was checked in the simulator against the dashboard instead: the dashboard's
+  own style (dark sky), Lofoten 68.12N 14.25E, z11, pitch 65, bearing 200, iPhone 18 Pro / iOS 27.2,
+  with the XCFramework from `bazel build --compilation_mode=opt --//:renderer=metal
+  //platform/ios:MapLibre.dynamic`. It matches GL JS to the eye: the same haze darkening toward
+  the horizon and the same sky band.
+
 **When to revisit:** once #4190 or #4533 lands on maplibre `main`, the other side adapts to it, and
 this fork can merge `main`.
 

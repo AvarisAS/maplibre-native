@@ -213,6 +213,21 @@ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligne
     }
 }
 
+std::array<double, 2> TransformState::getFogDepthRange() const {
+    const double cameraToCenterDistance = getCameraToCenterDistance();
+    const ScreenCoordinate offset = getCenterOffset();
+    const double limitedPitch = util::clamp(getPitch(), 0.0, maxMercatorHorizonAngle);
+    // Same far plane as getProjMatrix.
+    const double cameraToSeaLevelDistance = cameraToCenterDistance + std::abs(z) / std::cos(limitedPitch);
+    const double tanFovAboveCenter = (0.5 + (offset.y - frustumOffset.top()) / size.height) * 2.0 *
+                                     std::tan(fov / 2.0) *
+                                     (std::abs(std::cos(roll)) + std::abs(std::sin(roll)) * size.width / size.height);
+    const double tanMultiple = util::clamp(tanFovAboveCenter * std::tan(limitedPitch), 0.0, 0.99);
+    const double farZ = cameraToSeaLevelDistance / (1 - tanMultiple) * 1.01;
+    const double nearZ = std::max(cameraToCenterDistance / 2.0, cameraToSeaLevelDistance);
+    return {{nearZ, farZ}};
+}
+
 void TransformState::updateCameraState() const {
     if (!valid()) {
         return;

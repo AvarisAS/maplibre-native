@@ -198,13 +198,13 @@ gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n,
 #endif
 }
 
-gfx::DepthMode PaintParameters::depthModeFor3D() const {
+gfx::DepthMode PaintParameters::depthModeFor3D(gfx::DepthMaskType mask) const {
 #if MLN_RENDER_BACKEND_OPENGL
     return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual,
-                          .mask = gfx::DepthMaskType::ReadWrite,
+                          .mask = mask,
                           .range = {0.0, depthRangeSize}};
 #else
-    return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = gfx::DepthMaskType::ReadWrite};
+    return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = mask};
 #endif
 }
 

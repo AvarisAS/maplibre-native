@@ -257,6 +257,26 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
         renderLight.evaluate(evaluationParameters);
     }
 
+    // Update sky while preserving transitions between successive configurations.
+    bool skyChanged = false;
+    if (updateParameters->sky) {
+        if (!renderSky) {
+            renderSky.emplace(*updateParameters->sky);
+            skyChanged = true;
+        } else if (renderSky->impl != *updateParameters->sky) {
+            renderSky->impl = *updateParameters->sky;
+            renderSky->transition(transitionParameters);
+            skyChanged = true;
+        }
+    } else if (renderSky) {
+        renderSky.reset();
+        skyChanged = true;
+    }
+
+    if (renderSky && (skyChanged || zoomChanged || renderSky->hasTransition())) {
+        renderSky->evaluate(evaluationParameters);
+    }
+
     // Update terrain. The per-frame drawable/DEM update happens later in
     // updateRenderTree once the render sources have been updated; here we only
     // (re)create or drop the RenderTerrain to match the style.
@@ -454,11 +474,13 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
     const bool tiltedView = transformState.getPitch() != 0.0f;
 
     // Create parameters for the render tree.
-    auto renderTreeParameters = std::make_unique<RenderTreeParameters>(updateParameters->transformState,
-                                                                       updateParameters->mode,
-                                                                       updateParameters->debugOptions,
-                                                                       updateParameters->timePoint,
-                                                                       renderLight.getEvaluated());
+    auto renderTreeParameters = std::make_unique<RenderTreeParameters>(
+        updateParameters->transformState,
+        updateParameters->mode,
+        updateParameters->debugOptions,
+        updateParameters->timePoint,
+        renderLight.getEvaluated(),
+        renderSky ? std::optional{renderSky->getEvaluated()} : std::nullopt);
 
     std::set<LayerRenderItem> layerRenderItems;
     layersNeedPlacement.clear();
@@ -529,7 +551,7 @@ std::unique_ptr<RenderTree> RenderOrchestrator::createRenderTree(
 
             // Handle layers without source.
             if (layerIsVisible && zoomFitsLayer && sourceImpl.get() == sourceImpls->at(0).get()) {
-                if (backgroundLayerAsColor && layer.baseImpl == layerImpls->front()) {
+                if (backgroundLayerAsColor && !renderTreeParameters->sky && layer.baseImpl == layerImpls->front()) {
                     const auto& solidBackground = layer.getSolidBackground();
                     if (solidBackground) {
                         renderTreeParameters->backgroundColor = *solidBackground;
@@ -990,6 +1012,10 @@ bool RenderOrchestrator::hasTransitions(TimePoint timePoint) const {
         return true;
     }
 
+    if (renderSky && renderSky->hasTransition()) {
+        return true;
+    }
+
     for (const auto& entry : renderLayers) {
         if (entry.second->hasTransition()) {
             return true;
@@ -1195,6 +1221,14 @@ void RenderOrchestrator::updateLayers(gfx::ShaderRegistry& shaders,
     addChanges(changes);
 
     std::swap(frameRenderedFeatures, allFeatures);
+
+    const auto& treeParameters = renderTree.getParameters();
+    skyPass.update(shaders,
+                   context,
+                   state,
+                   paintParameters.renderableSize,
+                   paintParameters.pixelRatio,
+                   treeParameters.sky);
 }
 
 void RenderOrchestrator::processChanges() {

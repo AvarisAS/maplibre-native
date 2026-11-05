@@ -13,6 +13,7 @@ enum class BuiltIn {
     ClippingMaskProgram,
     BackgroundShader,
     BackgroundPatternShader,
+    SkyShader,
     CircleShader,
     CollisionBoxShader,
     CollisionCircleShader,

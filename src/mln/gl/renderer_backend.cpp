@@ -120,6 +120,7 @@ void RendererBackend::initShaders(gfx::ShaderRegistry& shaders, const ProgramPar
 
     registerTypes<shaders::BuiltIn::BackgroundShader,
                   shaders::BuiltIn::BackgroundPatternShader,
+                  shaders::BuiltIn::SkyShader,
                   shaders::BuiltIn::CircleShader,
                   shaders::BuiltIn::CollisionBoxShader,
                   shaders::BuiltIn::CollisionCircleShader,

@@ -26,6 +26,7 @@
 #include <mln/shaders/mtl/line.hpp>
 #include <mln/shaders/mtl/location_indicator.hpp>
 #include <mln/shaders/mtl/raster.hpp>
+#include <mln/shaders/mtl/sky.hpp>
 #include <mln/shaders/mtl/symbol.hpp>
 #include <mln/shaders/mtl/terrain.hpp>
 #include <mln/shaders/mtl/terrain_depth.hpp>
@@ -88,6 +89,7 @@ void registerTypes(gfx::ShaderRegistry& registry, const ProgramParameters& progr
 void RendererBackend::initShaders(gfx::ShaderRegistry& shaders, const ProgramParameters& programParameters) {
     registerTypes<shaders::BuiltIn::BackgroundShader,
                   shaders::BuiltIn::BackgroundPatternShader,
+                  shaders::BuiltIn::SkyShader,
                   shaders::BuiltIn::CircleShader,
                   shaders::BuiltIn::ClippingMaskProgram,
                   shaders::BuiltIn::CollisionBoxShader,

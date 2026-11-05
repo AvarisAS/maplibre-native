@@ -45,6 +45,18 @@ const std::vector<TextureInfo> BackgroundPatternShaderInfo::textures = {
     TextureInfo{"u_image", idBackgroundImageTexture},
 };
 
+// Sky
+using SkyShaderInfo = ShaderInfo<BuiltIn::SkyShader, gfx::Backend::Type::OpenGL>;
+
+const std::vector<UniformBlockInfo> SkyShaderInfo::uniformBlocks = {
+    UniformBlockInfo{"SkyPropsUBO", idSkyPropsUBO},
+};
+const std::vector<AttributeInfo> SkyShaderInfo::attributes = {
+    AttributeInfo{"a_pos", idSkyPosVertexAttribute},
+};
+const std::vector<TextureInfo> SkyShaderInfo::textures = {};
+
+
 // Circle
 using CircleShaderInfo = ShaderInfo<BuiltIn::CircleShader, gfx::Backend::Type::OpenGL>;
 
