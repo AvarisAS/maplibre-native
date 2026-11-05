@@ -874,6 +874,37 @@ float RenderTerrain::getElevation(const UnwrappedTileID& tileID_, float x, float
     return top + (bottom - top) * fy;
 }
 
+double RenderTerrain::getMinTileElevationForLatLng(const LatLng& latLng, uint8_t zoom) const {
+    if (!demSource) {
+        return 0.0;
+    }
+    const double n = std::pow(2.0, zoom);
+    const auto point = Projection::project(latLng, zoom);
+    const auto tx = static_cast<int64_t>(std::floor(point.x));
+    const auto ty = static_cast<int64_t>(std::floor(point.y));
+    if (ty < 0 || static_cast<double>(ty) >= n) {
+        return 0.0;
+    }
+    UnwrappedTileID tileID(zoom, tx, ty);
+    float x = 0.0f;
+    float y = 0.0f;
+    if (!normalizeTileCoordinates(tileID, x, y)) {
+        return 0.0;
+    }
+    const LoadedDEMTile* best = nullptr;
+    const auto loaded = loadedDEMTiles(demSource);
+    for (const auto& candidate : loaded) {
+        if ((candidate.id == tileID || tileID.isChildOf(candidate.id)) &&
+            (!best || candidate.id.canonical.z > best->id.canonical.z)) {
+            best = &candidate;
+        }
+    }
+    if (!best) {
+        return 0.0;
+    }
+    return static_cast<double>(best->data->getMinElevation()) * getExaggeration();
+}
+
 float RenderTerrain::getElevationWithExaggeration(const UnwrappedTileID& tileID, float x, float y) const {
     return getElevation(tileID, x, y) * getExaggeration();
 }

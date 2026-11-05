@@ -166,6 +166,39 @@ TEST(TransformState, CenterAltitudeStaysInMetersAcrossZoomAndLatitude) {
     EXPECT_NEAR(1500.0, state.getCenterAltitude(), 1e-6);
 }
 
+// The far plane reaches the lowest terrain under the centre, as gl-js's
+// _calculateNearFarZIfNeeded does with minElevationForCurrentTile. Computed from sea level, a deep
+// seabed towards the top of a pitched view (Vestfjorden, 68.15N 14.6E, z12, 75 degrees) fell behind
+// it and the sea drew as the clear colour.
+TEST(TransformState, FarPlaneReachesTheSeabedBelowSeaLevel) {
+    TransformState state;
+    state.setSize({400, 800});
+    state.setLatLngZoom(LatLng{68.15, 14.6}, 12.0);
+    state.setPitch(util::deg2rad(75.0));
+    const double seaLevelFar = state.getFogDepthRange()[1];
+
+    const double seabed = -1500.0;
+    state.setMinElevationForCurrentTile(seabed);
+    const auto range = state.getFogDepthRange();
+    // gl-js: the lowest plane is sea level's distance plus the depth along the view, ppm / cos(pitch).
+    const double ppm = 1.0 / Projection::getMetersPerPixelAtLatitude(68.15, 12.0);
+    const double seaLevel = state.getCameraToCenterDistance();
+    const double lowest = seaLevel - seabed * ppm / std::cos(util::deg2rad(75.0));
+    EXPECT_NEAR(seaLevelFar * lowest / seaLevel, range[1], range[1] * 1e-6);
+    // The fog still starts at sea level under the centre.
+    EXPECT_NEAR(seaLevel, range[0], 1e-6);
+
+    // A point on the seabed under the top of the view is in front of the far plane.
+    const ScreenCoordinate nearTop{200.0, 300.0};
+    vec4 p;
+    state.latLngToScreenCoordinate(state.screenCoordinateToLatLng(nearTop, seabed), seabed, p);
+    EXPECT_LT(p[2] / p[3], 1.0);
+
+    // Land under the centre (the minimum above sea level) leaves sea level as the plane.
+    state.setMinElevationForCurrentTile(200.0);
+    EXPECT_NEAR(seaLevelFar, state.getFogDepthRange()[1], 1e-6);
+}
+
 // Constraining the view to the world's height can move the centre or raise the zoom; the centre's
 // altitude in metres comes through either. Its old size in pixels, put back afterwards, did not.
 TEST(Transform, ConstrainingKeepsTheCenterAltitudeInMeters) {

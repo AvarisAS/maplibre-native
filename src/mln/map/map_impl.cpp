@@ -602,6 +602,13 @@ void Map::Impl::onTerrainTransitionTargetElevationChanged(double elevationMeters
     transform.retargetTransitionCenterAltitude(elevationMeters);
 }
 
+void Map::Impl::onTerrainMinElevationChanged(double elevationMeters) {
+    // The far plane reaches down to the lowest ground under the centre (gl-js sets
+    // minElevationForCurrentTile on every move and terrain load); a new plane needs a new frame.
+    transform.setMinElevationForCurrentTile(elevationMeters);
+    onUpdate();
+}
+
 void Map::Impl::onTerrainEyeElevationChanged(double elevationMeters) {
     terrainEyeElevation = elevationMeters;
     if (!centerClampedToGround) {

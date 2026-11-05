@@ -1,6 +1,10 @@
 #import <MapLibre.h>
 
+#import "MLNStyle_Private.h"
 #import "MLNVectorTileSource_Private.h"
+
+#include <mln/style/sky.hpp>
+#include <mln/style/style.hpp>
 #import "NSBundle+MLNAdditions.h"
 
 #import <XCTest/XCTest.h>
@@ -539,6 +543,31 @@
 }
 
 // MARK: Transition tests
+
+- (void)testSkyProperties {
+  // -setSkyProperties:error: is GL JS map.setSky for the properties given: in place, no reload.
+  NSError *error;
+  NSDictionary *first = @{@"sky-color" : @"#8fb8e0", @"fog-ground-blend" : @0.58};
+  XCTAssertTrue([self.style setSkyProperties:first error:&error]);
+  XCTAssertNil(error);
+  auto *sky = self.style.rawStyle->getSky();
+  XCTAssertTrue(sky);
+  XCTAssertEqualWithAccuracy(sky->getFogGroundBlend().asConstant(), 0.58, 1e-6);
+
+  XCTAssertTrue([self.style setSkyProperties:@{@"fog-ground-blend" : @0.98} error:&error]);
+  XCTAssertEqual(sky, self.style.rawStyle->getSky(), @"The same sky, changed in place");
+  XCTAssertEqualWithAccuracy(sky->getFogGroundBlend().asConstant(), 0.98, 1e-6);
+  XCTAssertFalse(sky->getSkyColor().isUndefined(), @"Properties not named are kept");
+
+  // A bad key changes nothing, even beside a good one.
+  NSDictionary *bad = @{@"fog-ground-blend" : @0.2, @"sky-colour" : @"red"};
+  XCTAssertFalse([self.style setSkyProperties:bad error:&error]);
+  XCTAssertNotNil(error);
+  XCTAssertEqualWithAccuracy(sky->getFogGroundBlend().asConstant(), 0.98, 1e-6);
+
+  [self.style removeSky];
+  XCTAssertTrue(self.style.rawStyle->getSky() == nullptr);
+}
 
 - (void)testGlobalState {
   XCTAssertEqualObjects(

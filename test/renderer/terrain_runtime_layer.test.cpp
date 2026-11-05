@@ -176,3 +176,23 @@ TEST(TerrainElevation, QueryReturnsTheExaggeratedHeightOfTheLoadedDEM) {
     test.renderRedInLineBand();
     EXPECT_FALSE(test.frontend.getRenderer()->queryTerrainElevation(LatLng{46.0, 10.0}).has_value());
 }
+
+// gl-js minElevationForCurrentTile: the renderer reports the lowest height of the DEM tile under
+// the centre to the map, whose far plane then reaches down to it (a seabed below sea level, e.g.
+// the deep Vestfjorden, was cut off by a far plane computed from sea level), and 0 once terrain
+// is gone.
+TEST(TerrainElevation, ReportsTheLowestHeightUnderTheCentreToTheTransform) {
+    TerrainStyleChangeTest test(TerrainLoadMode::Quality);
+    // -500 m: (-500 + 10000) / 0.1 = 95000 = 1 * 65536 + 115 * 256 + 24
+    test.dem = flatDEMTile(1, 115, 24);
+    std::string style = terrainStyle(false);
+    const std::string from = R"("exaggeration": 1.0)";
+    style.replace(style.find(from), from.size(), R"("exaggeration": 3.0)");
+    test.map.getStyle().loadJSON(style);
+    test.renderRedInLineBand();
+    EXPECT_NEAR(-1500.0, test.map.getTransformState().getMinElevationForCurrentTile(), 0.5);
+
+    test.map.getStyle().loadJSON(R"({"version": 8, "sources": {}, "layers": []})");
+    test.renderRedInLineBand();
+    EXPECT_EQ(0.0, test.map.getTransformState().getMinElevationForCurrentTile());
+}

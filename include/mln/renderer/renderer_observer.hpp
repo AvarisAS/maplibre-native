@@ -75,6 +75,10 @@ public:
     /// (Map::setCenterClampedToGround) learns of it here, one frame behind.
     virtual void onTerrainCenterElevationChanged(double /*elevationMeters*/) {}
 
+    /// The lowest terrain height (metres, exaggeration applied) in the DEM tile under the map
+    /// centre changed; the far plane reaches down to it (gl-js `minElevationForCurrentTile`).
+    virtual void onTerrainMinElevationChanged(double /*elevationMeters*/) {}
+
     /// The rendered terrain height under the camera's eye changed (one frame behind, like the
     /// center's). A map that keeps its eye above the ground (Map::setCenterClampedToGround)
     /// learns of it here: at a steep pitch the eye sits only a little above the center, so a

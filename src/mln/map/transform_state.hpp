@@ -167,6 +167,11 @@ public:
     // Position
     LatLng getLatLng(LatLng::WrapMode = LatLng::Unwrapped) const;
     double getCenterAltitude() const;
+    /// The lowest terrain height (metres, exaggeration applied) in the DEM tile under the map
+    /// centre, as gl-js's `minElevationForCurrentTile`. The far plane reaches down to it, so a
+    /// seabed below sea level is not clipped. 0 without terrain.
+    void setMinElevationForCurrentTile(double meters) { minElevationForCurrentTile = meters; }
+    double getMinElevationForCurrentTile() const { return minElevationForCurrentTile; }
     double pixel_x() const;
     double pixel_y() const;
 
@@ -329,7 +334,12 @@ private:
     double x = 0, y = 0, z = 0;
     /// The centre's altitude over sea level; `z` is the same in pixels at the current zoom.
     double altitudeMeters = 0;
+    double minElevationForCurrentTile = 0;
     void updateZ();
+    /// Camera-to-plane distance (pixels) the far plane is computed from: sea level, or the
+    /// lowest terrain below it (gl-js `_calculateNearFarZIfNeeded`).
+    double getLowestPlaneDistance(double limitedPitch) const;
+    double getFarZ() const;
     double bearing = 0;
     double scale = 1;
     double fov = util::DEFAULT_FOV;
