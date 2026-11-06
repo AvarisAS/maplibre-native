@@ -134,3 +134,22 @@ this fork can merge `main`.
 - Seen against GL JS: at z12 and 72° over Vestfjorden the far ground towards the horizon is
   still missing (the clear colour), where GL JS draws it. Most likely the mesh-tile cap
   (`TerrainLoadBudget::maxMeshTiles`, 48 in Quality); GL JS has none. Not changed here.
+
+## 7.0.0-avaris.4 (2026-11-06)
+
+- Merged into `avaris/main`:
+  - `avaris/min-elevation-rebuilds-matrices` (`c1d62a2f`): a new lowest plane
+    (`setMinElevationForCurrentTile`) rebuilds the transform's matrices, so the far plane
+    follows at once. Fixes the white band towards the horizon.
+  - `avaris/label-perspective-cutoff` (`d4ec8c44`): no label is placed under GL JS's 0.6
+    perspective-ratio cutoff (no peak names far behind a low, pitched camera).
+  - `avaris/terrain-horizon-cover` (head `146bc91a`): merged whole, since `146bc91a`
+    reverts `bd8509ac`'s cap raise; the net change is only the `[terrain-cover]` counters
+    (`render_terrain.cpp/.hpp`). The mesh-tile cap is unchanged.
+- Tests (macOS Metal): `mbgl-test-runner` over `*TransformState*:*Transform*:*Terrain*:*Sky*:
+  *Collision*:*Placement*:*Symbol*`, 137 pass, 1 disabled; `MainResourceLoader.SetResourceTransform`
+  (matched by the filter, network) hangs locally and was left out.
+  `bazel test //platform/ios/test:ios_test --test_filter=MLNStyleTests` 22/22.
+- Built by hand like `.3` from merge `5a75d66d` (`--embed_label=maplibre_ios_7.0.0-avaris.4`, LICENSE.md
+  in the zip). Release asset, Package.swift and tag `7.0.0-avaris.4` in
+  AvarisAS/maplibre-native-distribution.
