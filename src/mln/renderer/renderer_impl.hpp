@@ -67,6 +67,9 @@ private:
     // back to 1 to save GPU memory on constrained devices (each step is 4x memory/target).
     static constexpr uint32_t drapeTileSize = 512;
     static constexpr uint32_t drapeQualityFactor = 2;
+    /// Cover tiles this many zoom levels coarser than the finest still drape at drapeTileSize;
+    /// coarser ones at half of it.
+    static constexpr int farDrapeZoomGap = 2;
     TexturePool texturePool{drapeTileSize * drapeQualityFactor};
     /// This frame's layer revisions (see PaintParameters::drapeLayerRevisions).
     std::unordered_map<std::string, std::uintptr_t> layerIdentities;
