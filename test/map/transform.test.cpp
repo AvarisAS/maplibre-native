@@ -199,6 +199,27 @@ TEST(TransformState, FarPlaneReachesTheSeabedBelowSeaLevel) {
     EXPECT_NEAR(seaLevelFar, state.getFogDepthRange()[1], 1e-6);
 }
 
+// The lowest plane reported after the matrices were built moves the far plane in them too. The
+// renderer reports it once the DEM has loaded, with the camera at rest: kept, the frustum stayed
+// at sea level, the terrain's cover culled a seabed deeper than 1 % of the camera's distance, and
+// at z13 over Vestfjorden only the shallow row of tiles drew until the map was panned.
+TEST(TransformState, ALowerPlaneAfterTheMatricesMovesTheFarPlane) {
+    TransformState state;
+    state.setSize({402, 874});
+    state.setLatLngZoom(LatLng{68.048983, 13.669843}, 13.0);
+    const double seabed = -300.0;
+    const ScreenCoordinate corner{20.0, 850.0};
+    const auto depthOf = [&] {
+        vec4 p;
+        state.latLngToScreenCoordinate(state.screenCoordinateToLatLng(corner, seabed), seabed, p);
+        return p[2] / p[3];
+    };
+    // Built at sea level: the seabed is behind the far plane.
+    EXPECT_GT(depthOf(), 1.0);
+    state.setMinElevationForCurrentTile(seabed);
+    EXPECT_LT(depthOf(), 1.0);
+}
+
 // Constraining the view to the world's height can move the centre or raise the zoom; the centre's
 // altitude in metres comes through either. Its old size in pixels, put back afterwards, did not.
 TEST(Transform, ConstrainingKeepsTheCenterAltitudeInMeters) {
