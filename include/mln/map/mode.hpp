@@ -62,12 +62,10 @@ enum class TileLodMode : uint8_t {
 enum class TerrainLoadMode : uint8_t {
     Quality,     ///< No per-frame budget: all revealed tiles/drapes build immediately. Sharp, may
                  ///< stall a frame on big bursts (zoom-in over new coverage). The mesh follows
-                 ///< the view past a coarser DEM, as maplibre-gl-js does, up to 160 mesh tiles:
-                 ///< enough for the LOD cover of a 72-degree view to reach the horizon,
-                 ///< which gl-js draws with no cap at all.
+                 ///< the view past a coarser DEM, as maplibre-gl-js does, up to 64 mesh tiles.
                  ///< Default.
     Balanced,    ///< Cap 32 new-tile builds + 16 drape re-renders per frame. Mesh to z15, up to
-                 ///< 96 mesh tiles.
+                 ///< 48 mesh tiles.
     Performance, ///< Cap 8 new-tile builds + 4 drape re-renders per frame; smoothest on
                  ///< weak GPUs, most progressive fill-in. Mesh to z14, up to 24 mesh tiles.
 };
@@ -98,13 +96,13 @@ constexpr TerrainLoadBudget terrainLoadBudget(TerrainLoadMode mode) {
     switch (mode) {
         case TerrainLoadMode::Balanced:
             return {
-                .newTileBuildsPerFrame = 32, .drapeRerendersPerFrame = 16, .maxMeshTiles = 96, .meshTargetZoom = 15};
+                .newTileBuildsPerFrame = 32, .drapeRerendersPerFrame = 16, .maxMeshTiles = 48, .meshTargetZoom = 15};
         case TerrainLoadMode::Performance:
             return {.newTileBuildsPerFrame = 8, .drapeRerendersPerFrame = 4, .maxMeshTiles = 24, .meshTargetZoom = 14};
         case TerrainLoadMode::Quality:
         default:
             // no per-frame budget, generous tile cap, mesh follows the view
-            return {.newTileBuildsPerFrame = 0, .drapeRerendersPerFrame = 0, .maxMeshTiles = 160, .meshTargetZoom = 22};
+            return {.newTileBuildsPerFrame = 0, .drapeRerendersPerFrame = 0, .maxMeshTiles = 64, .meshTargetZoom = 22};
     }
 }
 

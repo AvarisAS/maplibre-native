@@ -1,3 +1,6 @@
+#if defined(__APPLE__)
+#include <os/log.h>
+#endif
 #include <mln/renderer/render_terrain.hpp>
 #include <mln/renderer/sources/render_tile_source.hpp>
 #include <mln/renderer/tile_pyramid.hpp>
@@ -140,6 +143,28 @@ RenderTerrain::RenderTerrain(Immutable<style::Terrain::Impl> impl_)
 
 RenderTerrain::~RenderTerrain() = default;
 
+void RenderTerrain::logCoverStats() const {
+    // Avaris instrumentation: one line per change, os_log category INFO, event Render.
+    const auto& c = coverStats;
+    std::ostringstream os;
+    os << "[terrain-cover] zoom=" << std::fixed << std::setprecision(2) << c.zoom << " pitch=" << c.pitchDeg
+       << " coverZ=" << c.coverZoom << " demMaxZ=" << int(c.demMaxZoom) << " ideal=" << c.ideal
+       << " dilated=" << c.dilated << " coarsened=" << c.coarsened << " cap=" << c.cap << " kept=" << c.kept
+       << " droppedByCap=" << (c.coarsened > c.kept ? c.coarsened - c.kept : 0) << " z=" << c.minZ << ".." << c.maxZ
+       << " own=" << c.own << " ancestor=" << c.ancestor << " flat=" << c.flat << " demCached=" << demTextures.size();
+    std::string line = os.str();
+    if (line != lastCoverStatsLine) {
+        lastCoverStatsLine = line;
+#if defined(__APPLE__)
+        // Straight to os_log, so a release build of the app shows it whatever the platform
+        // logging level: `log stream --predicate 'eventMessage CONTAINS "terrain-cover"'`.
+        os_log(OS_LOG_DEFAULT, "%{public}s", line.c_str());
+#else
+        Log::Info(Event::Render, line);
+#endif
+    }
+}
+
 std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     const TransformState& state, const std::shared_ptr<UpdateParameters>& updateParameters) const {
     std::set<UnwrappedTileID> out;
@@ -206,10 +231,17 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     // this is correct for terrain above OR below sea level (bathymetry) without hardcoding
     // a direction; the frustum trim stops it from tripling the cover like a blind ring
     // would. Drop the frustumCull line to fall back to a pure uniform 1-ring dilation.
+    const size_t idealCount = out.size();
     std::set<UnwrappedTileID> dilated = dilateCover(out);
     if (dilated.size() != out.size()) {
         out = util::frustumCull(coverParams, dilated);
     }
+    coverStats.ideal = idealCount;
+    coverStats.dilated = out.size();
+    coverStats.zoom = state.getZoom();
+    coverStats.pitchDeg = util::rad2deg(state.getPitch());
+    coverStats.coverZoom = overscaledZoom;
+    coverStats.demMaxZoom = demSource->getMaxZoom();
 
     // Cap the tile count: keep those nearest the camera, drop the farthest (the horizon tiles a
     // high tilt pulls in). Nearest the camera, not the map centre: at a steep tilt the centre is
@@ -229,7 +261,16 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
         const size_t maxTiles = terrainLoadBudget(updateParameters->terrainLoadMode).maxMeshTiles;
         const auto origin = meshTileCapOrigin(state);
         out = coarsenFarMeshTiles(std::move(out), maxTiles, demSource->getMaxZoom(), origin);
+        coverStats.coarsened = out.size();
         out = nearestMeshTiles(std::move(out), maxTiles, origin);
+        coverStats.cap = maxTiles;
+        coverStats.kept = out.size();
+    }
+    coverStats.minZ = 255;
+    coverStats.maxZ = 0;
+    for (const auto& id : out) {
+        coverStats.minZ = std::min<int>(coverStats.minZ, id.canonical.z);
+        coverStats.maxZ = std::max<int>(coverStats.maxZ, id.canonical.z);
     }
     return out;
 }
@@ -520,6 +561,8 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
     std::set<UnwrappedTileID> meshTiles = frameMeshCover ? std::move(*frameMeshCover)
                                                          : computeMeshCover(state, updateParameters);
     frameMeshCover.reset();
+    logCoverStats();
+    coverStats.own = coverStats.ancestor = coverStats.flat = 0;
 
     // Drop drawables and cached DEM textures for tiles that left the mesh tile
     // set, keeping everything else intact between frames
@@ -598,6 +641,7 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
         // texture from under the drawable still sampling it.
         if (const auto existing = tilesWithDrawables.find(tileID);
             existing != tilesWithDrawables.end() && existing->second.tier == 2) {
+            coverStats.own++;
             if (auto cached = demTextures.find(unwrapped); cached != demTextures.end()) {
                 cached->second.lastUsed = demUpdateCounter;
             }
@@ -624,6 +668,7 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
             demTexture = cached->second.texture;
             demTier = 2;
             demTileUsed = &unwrapped;
+            coverStats.own++;
         } else {
             // Fall back to the closest cached ancestor DEM
             const UnwrappedTileID* ancestorID = nullptr;
@@ -643,10 +688,12 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
                 // DEM so the draped map still shows (a briefly flat area is
                 // less jarring than a hole in the terrain)
                 demTexture = getPlaceholderDEMTexture(context);
+                coverStats.flat++;
                 if (!demTexture) {
                     continue;
                 }
             } else {
+                coverStats.ancestor++;
                 ancestorEntry->lastUsed = demUpdateCounter;
                 demTier = 1;
                 demTileUsed = ancestorID;

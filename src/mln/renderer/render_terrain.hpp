@@ -132,6 +132,19 @@ public:
                                                          const std::array<double, 2>& origin);
 
     /// Tiles a source may cover per tile of the mesh-tile cap (TileParameters::coverTileLimit).
+    /// Avaris instrumentation of the mesh cover (see logCoverStats).
+    struct CoverStats {
+        double zoom = 0, pitchDeg = 0;
+        int coverZoom = 0;
+        uint8_t demMaxZoom = 0;
+        size_t ideal = 0, dilated = 0, coarsened = 0, cap = 0, kept = 0;
+        int minZ = 0, maxZ = 0;
+        size_t own = 0, ancestor = 0, flat = 0;
+    };
+    mutable CoverStats coverStats;
+    mutable std::string lastCoverStatsLine;
+    void logCoverStats() const;
+
     static constexpr size_t sourceTilesPerMeshTile = 4;
 
     /// Resolve the DEM render source from the orchestrator if not yet bound.

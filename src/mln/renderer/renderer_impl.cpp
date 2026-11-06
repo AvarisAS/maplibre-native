@@ -271,13 +271,8 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
         // over relief runs to dozens of them: all full size, an older phone ran out of GPU memory.
         uint8_t finestZoom = 0;
         for (const auto& id : demTileIDs) finestZoom = std::max(finestZoom, id.canonical.z);
-        // Past two levels coarser than that, a tile is a sliver towards the horizon and gets a
-        // sixteenth (256 px, ~0.6 MB): what lets the tile cap reach the horizon as gl-js's
-        // uncapped cover does without the drape memory growing with it.
         for (const auto& id : demTileIDs) {
-            const uint32_t size = id.canonical.z >= finestZoom             ? drapeTileSize * drapeQualityFactor
-                                  : id.canonical.z + farDrapeZoomGap >= finestZoom ? drapeTileSize
-                                                                                    : drapeTileSize / 2;
+            const uint32_t size = id.canonical.z >= finestZoom ? drapeTileSize * drapeQualityFactor : drapeTileSize;
             texturePool.createRenderTarget(context, id, renderTreeParameters.backgroundColor, size);
         }
         texturePool.removeStaleRenderTargets(demTileIDs);
