@@ -122,6 +122,8 @@ private:
     const TransformState transformState;
 
     const float viewportPadding;
+    // gl-js: labels whose perspective ratio is under this are not placed (near the horizon).
+    static constexpr float perspectiveRatioCutoff = 0.6f;
     CollisionGrid collisionGrid;
     CollisionGrid ignoredGrid;
 

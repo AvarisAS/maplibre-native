@@ -169,6 +169,11 @@ std::pair<bool, bool> CollisionIndex::placeFeature(
         auto collisionBoundaries = getProjectedCollisionBoundaries(posMatrix, shift, textPixelRatio, box, getElevation);
         projectedBoxes.emplace_back(
             collisionBoundaries[0], collisionBoundaries[1], collisionBoundaries[2], collisionBoundaries[3]);
+        // gl-js places no label whose perspective ratio is under 0.6: one so far out under a tilted
+        // camera that it is a speck at the horizon (CollisionIndex.perspectiveRatioCutoff).
+        if (projectAnchor(posMatrix, box.anchor, getElevation).first < perspectiveRatioCutoff) {
+            return {false, false};
+        }
         if ((avoidEdges && !isInsideTile(collisionBoundaries, *avoidEdges)) || !isInsideGrid(collisionBoundaries) ||
             (!allowOverlap && collisionGrid.hitTest(projectedBoxes.back().box(), collisionGroupPredicate))) {
             return {false, false};
@@ -212,6 +217,10 @@ std::pair<bool, bool> CollisionIndex::placeLineFeature(
     assert(projectedBoxes.empty());
     const auto tileUnitAnchorPoint = symbol.anchorPoint;
     const auto projectedAnchor = projectAnchor(posMatrix, tileUnitAnchorPoint, getElevation);
+    // gl-js's perspective cutoff, as for a point label above.
+    if (projectedAnchor.first < perspectiveRatioCutoff) {
+        return {false, false};
+    }
 
     const float fontScale = fontSize / 24;
     const float lineOffsetX = symbol.lineOffset[0] * fontSize;
