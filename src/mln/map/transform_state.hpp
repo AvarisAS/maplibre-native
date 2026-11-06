@@ -170,7 +170,16 @@ public:
     /// The lowest terrain height (metres, exaggeration applied) in the DEM tile under the map
     /// centre, as gl-js's `minElevationForCurrentTile`. The far plane reaches down to it, so a
     /// seabed below sea level is not clipped. 0 without terrain.
-    void setMinElevationForCurrentTile(double meters) { minElevationForCurrentTile = meters; }
+    /// A new lowest plane moves the far plane, so the matrices built from it are rebuilt: kept,
+    /// the frustum stayed at the plane of the last camera change. The terrain's elevation-aware
+    /// cover culls against that frustum, and a cover taken before the DEM arrived (lowest plane
+    /// at sea level) dropped every tile of a deep seabed until the camera next moved.
+    void setMinElevationForCurrentTile(double meters) {
+        if (meters != minElevationForCurrentTile) {
+            minElevationForCurrentTile = meters;
+            requestMatricesUpdate = true;
+        }
+    }
     double getMinElevationForCurrentTile() const { return minElevationForCurrentTile; }
     double pixel_x() const;
     double pixel_y() const;
