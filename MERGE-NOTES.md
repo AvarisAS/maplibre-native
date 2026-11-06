@@ -150,6 +150,6 @@ this fork can merge `main`.
   *Collision*:*Placement*:*Symbol*`, 137 pass, 1 disabled; `MainResourceLoader.SetResourceTransform`
   (matched by the filter, network) hangs locally and was left out.
   `bazel test //platform/ios/test:ios_test --test_filter=MLNStyleTests` 22/22.
-- Built by hand like `.3` from merge `5a75d66d` (`--embed_label=maplibre_ios_7.0.0-avaris.4`, LICENSE.md
-  in the zip). Release asset, Package.swift and tag `7.0.0-avaris.4` in
+- Built by hand like `.3` from `46645127` (merges up to `5a75d66d`, `--embed_label=maplibre_ios_7.0.0-avaris.4`, LICENSE.md
+  in the zip), checksum `5bbfd4ef257e69525dfa3f3319aa24fb279f0610723e7b14c6c80dde75c43a5c`. Release asset, Package.swift and tag `7.0.0-avaris.4` in
   AvarisAS/maplibre-native-distribution.
