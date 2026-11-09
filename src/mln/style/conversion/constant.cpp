@@ -92,6 +92,8 @@ template std::optional<SymbolPlacementType> Converter<SymbolPlacementType>::oper
 template std::optional<SymbolZOrderType> Converter<SymbolZOrderType>::operator()(const Convertible&, Error&) const;
 template std::optional<TextJustifyType> Converter<TextJustifyType>::operator()(const Convertible&, Error&) const;
 template std::optional<TextTransformType> Converter<TextTransformType>::operator()(const Convertible&, Error&) const;
+template std::optional<ElevationReferenceType> Converter<ElevationReferenceType>::operator()(const Convertible&,
+                                                                                             Error&) const;
 template std::optional<TranslateAnchorType> Converter<TranslateAnchorType>::operator()(const Convertible&,
                                                                                        Error&) const;
 template std::optional<VisibilityType> Converter<VisibilityType>::operator()(const Convertible&, Error&) const;

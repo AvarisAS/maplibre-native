@@ -85,6 +85,10 @@ public:
     const PropertyValue<bool>& getSymbolAvoidEdges() const;
     void setSymbolAvoidEdges(const PropertyValue<bool>&);
 
+    static PropertyValue<ElevationReferenceType> getDefaultSymbolElevationReference();
+    const PropertyValue<ElevationReferenceType>& getSymbolElevationReference() const;
+    void setSymbolElevationReference(const PropertyValue<ElevationReferenceType>&);
+
     static PropertyValue<SymbolPlacementType> getDefaultSymbolPlacement();
     const PropertyValue<SymbolPlacementType>& getSymbolPlacement() const;
     void setSymbolPlacement(const PropertyValue<SymbolPlacementType>&);

@@ -62,6 +62,8 @@ public:
     std::optional<gfx::RenderPassDescriptor> renderPassDescriptor;
 
     MTLDepthStencilStatePtr depthStencilState;
+    // Avaris: whether depthStencilState was built for a sea-level drawable over terrain
+    bool previousSeaDepth = false;
     gfx::StencilMode previousStencilMode;
 };
 

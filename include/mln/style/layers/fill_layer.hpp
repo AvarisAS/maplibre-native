@@ -21,6 +21,10 @@ public:
 
     // Layout properties
 
+    static PropertyValue<ElevationReferenceType> getDefaultFillElevationReference();
+    const PropertyValue<ElevationReferenceType>& getFillElevationReference() const;
+    void setFillElevationReference(const PropertyValue<ElevationReferenceType>&);
+
     static PropertyValue<float> getDefaultFillSortKey();
     const PropertyValue<float>& getFillSortKey() const;
     void setFillSortKey(const PropertyValue<float>&);

@@ -91,6 +91,11 @@ struct SymbolAvoidEdges : LayoutProperty<bool> {
     static bool defaultValue() { return false; }
 };
 
+struct SymbolElevationReference : LayoutProperty<ElevationReferenceType> {
+    static constexpr const char *name() { return "symbol-elevation-reference"; }
+    static ElevationReferenceType defaultValue() { return ElevationReferenceType::Ground; }
+};
+
 struct SymbolPlacement : LayoutProperty<SymbolPlacementType> {
     static constexpr const char *name() { return "symbol-placement"; }
     static SymbolPlacementType defaultValue() { return SymbolPlacementType::Point; }
@@ -306,6 +311,7 @@ class SymbolLayoutProperties : public Properties<
     IconTextFit,
     IconTextFitPadding,
     SymbolAvoidEdges,
+    SymbolElevationReference,
     SymbolPlacement,
     SymbolScreenSpace,
     SymbolSortKey,

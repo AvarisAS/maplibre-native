@@ -129,6 +129,11 @@ template std::optional<PropertyValue<TextJustifyType>> Converter<PropertyValue<T
     conversion::Convertible const&, conversion::Error&, bool, bool) const;
 template std::optional<PropertyValue<TextTransformType>> Converter<PropertyValue<TextTransformType>>::operator()(
     conversion::Convertible const&, conversion::Error&, bool, bool) const;
+template std::optional<PropertyValue<ElevationReferenceType>>
+Converter<PropertyValue<ElevationReferenceType>>::operator()(conversion::Convertible const&,
+                                                            conversion::Error&,
+                                                            bool,
+                                                            bool) const;
 template std::optional<PropertyValue<TranslateAnchorType>> Converter<PropertyValue<TranslateAnchorType>>::operator()(
     conversion::Convertible const&, conversion::Error&, bool, bool) const;
 template std::optional<PropertyValue<mln::style::expression::Formatted>>

@@ -79,6 +79,21 @@ void LineLayer::setLineCap(const PropertyValue<LineCapType>& value) {
     baseImpl = std::move(impl_);
     observer->onLayerChanged(*this);
 }
+PropertyValue<ElevationReferenceType> LineLayer::getDefaultLineElevationReference() {
+    return LineElevationReference::defaultValue();
+}
+
+const PropertyValue<ElevationReferenceType>& LineLayer::getLineElevationReference() const {
+    return impl().layout.get<LineElevationReference>();
+}
+
+void LineLayer::setLineElevationReference(const PropertyValue<ElevationReferenceType>& value) {
+    if (value == getLineElevationReference()) return;
+    auto impl_ = mutableImpl();
+    impl_->layout.get<LineElevationReference>() = value;
+    baseImpl = std::move(impl_);
+    observer->onLayerChanged(*this);
+}
 PropertyValue<LineJoinType> LineLayer::getDefaultLineJoin() {
     return LineJoin::defaultValue();
 }
@@ -481,6 +496,7 @@ enum class Property : uint8_t {
     LineTranslateAnchorTransition,
     LineWidthTransition,
     LineCap = kPaintPropertyCount,
+    LineElevationReference,
     LineJoin,
     LineMiterLimit,
     LineRoundLimit,
@@ -516,6 +532,7 @@ constexpr const auto layerProperties = mapbox::eternal::hash_map<mapbox::eternal
      {"line-translate-anchor-transition", toUint8(Property::LineTranslateAnchorTransition)},
      {"line-width-transition", toUint8(Property::LineWidthTransition)},
      {"line-cap", toUint8(Property::LineCap)},
+     {"line-elevation-reference", toUint8(Property::LineElevationReference)},
      {"line-join", toUint8(Property::LineJoin)},
      {"line-miter-limit", toUint8(Property::LineMiterLimit)},
      {"line-round-limit", toUint8(Property::LineRoundLimit)},
@@ -569,6 +586,8 @@ StyleProperty getLayerProperty(const LineLayer& layer, Property property) {
             return makeStyleProperty(layer.getLineWidthTransition());
         case Property::LineCap:
             return makeStyleProperty(layer.getLineCap());
+        case Property::LineElevationReference:
+            return makeStyleProperty(layer.getLineElevationReference());
         case Property::LineJoin:
             return makeStyleProperty(layer.getLineJoin());
         case Property::LineMiterLimit:
@@ -714,6 +733,16 @@ std::optional<Error> LineLayer::setPropertyInternal(const std::string& name, con
         }
 
         setLineCap(*typedValue);
+        return std::nullopt;
+    }
+    if (property == Property::LineElevationReference) {
+        Error error;
+        const auto& typedValue = convert<PropertyValue<ElevationReferenceType>>(value, error, false, false);
+        if (!typedValue) {
+            return error;
+        }
+
+        setLineElevationReference(*typedValue);
         return std::nullopt;
     }
     if (property == Property::LineJoin) {

@@ -84,6 +84,9 @@ function evaluatedType(property) {
   if (/text-variable-anchor-offset/.test(property.name)) {
     return 'VariableAnchorOffsetCollection';
   }
+  if (/-elevation-reference$/.test(property.name)) {
+    return 'ElevationReferenceType';
+  }
   if (/-translate-anchor$/.test(property.name)) {
     return 'TranslateAnchorType';
   }

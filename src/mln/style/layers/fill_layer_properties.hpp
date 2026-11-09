@@ -16,6 +16,11 @@
 namespace mln {
 namespace style {
 
+struct FillElevationReference : LayoutProperty<ElevationReferenceType> {
+    static constexpr const char *name() { return "fill-elevation-reference"; }
+    static ElevationReferenceType defaultValue() { return ElevationReferenceType::Ground; }
+};
+
 struct FillSortKey : DataDrivenLayoutProperty<float> {
     static constexpr const char *name() { return "fill-sort-key"; }
     static float defaultValue() { return 0.f; }
@@ -50,6 +55,7 @@ struct FillTranslateAnchor : PaintProperty<TranslateAnchorType> {
 };
 
 class FillLayoutProperties : public Properties<
+    FillElevationReference,
     FillSortKey
 > {};
 

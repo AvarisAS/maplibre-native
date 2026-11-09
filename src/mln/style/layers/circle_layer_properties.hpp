@@ -16,6 +16,11 @@
 namespace mln {
 namespace style {
 
+struct CircleElevationReference : LayoutProperty<ElevationReferenceType> {
+    static constexpr const char *name() { return "circle-elevation-reference"; }
+    static ElevationReferenceType defaultValue() { return ElevationReferenceType::Ground; }
+};
+
 struct CircleSortKey : DataDrivenLayoutProperty<float> {
     static constexpr const char *name() { return "circle-sort-key"; }
     static float defaultValue() { return 0.f; }
@@ -66,6 +71,7 @@ struct CircleTranslateAnchor : PaintProperty<TranslateAnchorType> {
 };
 
 class CircleLayoutProperties : public Properties<
+    CircleElevationReference,
     CircleSortKey
 > {};
 

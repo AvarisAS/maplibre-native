@@ -20,6 +20,12 @@ MBGL_DEFINE_ENUM(VisibilityType,
                      {VisibilityType::None, "none"},
                  });
 
+MBGL_DEFINE_ENUM(ElevationReferenceType,
+                 {
+                     {ElevationReferenceType::Ground, "ground"},
+                     {ElevationReferenceType::Sea, "sea"},
+                 });
+
 MBGL_DEFINE_ENUM(TranslateAnchorType,
                  {
                      {TranslateAnchorType::Map, "map"},

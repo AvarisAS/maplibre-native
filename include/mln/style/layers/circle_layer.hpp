@@ -21,6 +21,10 @@ public:
 
     // Layout properties
 
+    static PropertyValue<ElevationReferenceType> getDefaultCircleElevationReference();
+    const PropertyValue<ElevationReferenceType>& getCircleElevationReference() const;
+    void setCircleElevationReference(const PropertyValue<ElevationReferenceType>&);
+
     static PropertyValue<float> getDefaultCircleSortKey();
     const PropertyValue<float>& getCircleSortKey() const;
     void setCircleSortKey(const PropertyValue<float>&);

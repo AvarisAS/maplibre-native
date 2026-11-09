@@ -58,6 +58,7 @@ std::vector<gfx::UniqueDrawable> TileLayerGroup::removeDrawables(mln::RenderPass
 void TileLayerGroup::addDrawable(mln::RenderPass pass, const OverscaledTileID& id, gfx::UniqueDrawable&& drawable) {
     assert(drawablesByTile.size() == sortedDrawables.size());
     if (drawable) {
+        drawable->setSeaLevel(seaLevel);
         LayerGroupBase::addDrawable(drawable);
         [[maybe_unused]] const auto result = sortedDrawables.insert(drawable.get());
         assert(result.second);

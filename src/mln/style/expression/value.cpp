@@ -409,6 +409,8 @@ template struct ValueConverter<TextJustifyType>;
 template type::Type valueTypeToExpressionType<TextTransformType>();
 template struct ValueConverter<TextTransformType>;
 
+template type::Type valueTypeToExpressionType<ElevationReferenceType>();
+template struct ValueConverter<ElevationReferenceType>;
 template type::Type valueTypeToExpressionType<TranslateAnchorType>();
 template struct ValueConverter<TranslateAnchorType>;
 

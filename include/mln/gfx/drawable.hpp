@@ -163,6 +163,11 @@ public:
     /// Set 3D mode
     void setIs3D(bool value) { is3D = value; }
 
+    /// Avaris: flat at sea level under terrain, depth-tested (read-only) against the terrain
+    /// mesh in the main pass (`*-elevation-reference: sea`). Set by TileLayerGroup::addDrawable.
+    bool getSeaLevel() const { return seaLevel; }
+    void setSeaLevel(bool value) { seaLevel = value; }
+
     /// True if this is a custom drawable
     bool getIsCustom() const { return isCustom; }
 
@@ -284,6 +289,7 @@ protected:
     bool enableStencil = false;
     bool enableDepth = true;
     bool is3D = false;
+    bool seaLevel = false;
     bool isCustom = false;
     std::string name;
     const util::SimpleIdentity uniqueID;

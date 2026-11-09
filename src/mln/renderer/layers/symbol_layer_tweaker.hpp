@@ -20,7 +20,11 @@ public:
 
     void execute(LayerGroupBase&, const PaintParameters&) override;
 
+    /// Avaris: `symbol-elevation-reference: sea`; anchors at 0 m instead of the DEM's height.
+    void setSeaLevel(bool value) { seaLevel = value; }
+
 private:
+    bool seaLevel = false;
     gfx::UniformBufferPtr evaluatedPropsUniformBuffer;
 
 #if MLN_UBO_CONSOLIDATION

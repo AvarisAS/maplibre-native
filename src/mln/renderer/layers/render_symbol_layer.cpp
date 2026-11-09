@@ -779,6 +779,13 @@ void RenderSymbolLayer::update(gfx::ShaderRegistry& shaders,
         layerTweaker = std::make_shared<SymbolLayerTweaker>(getID(), evaluatedProperties);
         layerGroup->addLayerTweaker(layerTweaker);
     }
+    {
+        // Avaris: `symbol-elevation-reference: sea`
+        const auto& elevationReference = impl_cast(baseImpl).layout.get<SymbolElevationReference>();
+        static_cast<SymbolLayerTweaker&>(*layerTweaker)
+            .setSeaLevel(elevationReference.isConstant() &&
+                         elevationReference.asConstant() == style::ElevationReferenceType::Sea);
+    }
 
     const auto& getCollisionTileLayerGroup = [&] {
         if (!collisionTileLayerGroup) {

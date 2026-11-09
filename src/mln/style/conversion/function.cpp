@@ -165,6 +165,8 @@ template std::optional<PropertyExpression<TextJustifyType>> convertFunctionToExp
     const Convertible&, Error&, bool);
 template std::optional<PropertyExpression<TextTransformType>> convertFunctionToExpression<TextTransformType>(
     const Convertible&, Error&, bool);
+template std::optional<PropertyExpression<ElevationReferenceType>> convertFunctionToExpression<ElevationReferenceType>(
+    const Convertible&, Error&, bool);
 template std::optional<PropertyExpression<TranslateAnchorType>> convertFunctionToExpression<TranslateAnchorType>(
     const Convertible&, Error&, bool);
 template std::optional<PropertyExpression<std::vector<Color>>> convertFunctionToExpression<std::vector<Color>>(

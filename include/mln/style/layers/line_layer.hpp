@@ -28,6 +28,10 @@ public:
     const PropertyValue<LineCapType>& getLineCap() const;
     void setLineCap(const PropertyValue<LineCapType>&);
 
+    static PropertyValue<ElevationReferenceType> getDefaultLineElevationReference();
+    const PropertyValue<ElevationReferenceType>& getLineElevationReference() const;
+    void setLineElevationReference(const PropertyValue<ElevationReferenceType>&);
+
     static PropertyValue<LineJoinType> getDefaultLineJoin();
     const PropertyValue<LineJoinType>& getLineJoin() const;
     void setLineJoin(const PropertyValue<LineJoinType>&);
