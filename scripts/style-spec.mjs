@@ -198,4 +198,22 @@ modifiedReferenceSpec["layout_symbol"]["symbol-screen-space"] = {
     "doc": "Internal use only"
 };
 
+// Avaris: which surface the layer's geometry stands on under 3D terrain. "ground" (the
+// default) drapes fill/line on the terrain and lifts circle/symbol anchors by the DEM;
+// "sea" draws them flat at 0 m (sea level), depth-tested against the terrain so land in
+// front of them hides them. Mapbox-style naming (`*-elevation-reference`).
+for (const type of ["fill", "line", "circle", "symbol"]) {
+  modifiedReferenceSpec[`layout_${type}`][`${type}-elevation-reference`] = {
+    "type": "enum",
+    "values": {
+      "ground": { "doc": "On the terrain surface: draped, or lifted by the terrain elevation." },
+      "sea": { "doc": "Flat at sea level (0 m), occluded by terrain above it." }
+    },
+    "default": "ground",
+    "property-type": "data-constant",
+    "expression": { "interpolated": false, "parameters": ["zoom"] },
+    "doc": "The surface the layer is placed on when 3D terrain is enabled. No effect without terrain."
+  };
+}
+
 export default modifiedReferenceSpec;

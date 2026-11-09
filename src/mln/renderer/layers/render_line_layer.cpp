@@ -336,8 +336,20 @@ void RenderLineLayer::update(gfx::ShaderRegistry& shaders,
     }
 
     // Set up a layer group
+    // Avaris: `*-elevation-reference: sea` keeps the layer out of the terrain drape; it is drawn
+    // flat at sea level in the main pass instead. A change between the two rebuilds the group.
+    const auto& elevationReference = impl_cast(baseImpl).layout.get<style::LineElevationReference>();
+    const bool seaLevel = elevationReference.isConstant() &&
+                          elevationReference.asConstant() == style::ElevationReferenceType::Sea;
+    if (layerGroup && layerGroup->shouldRenderToTerrain() == seaLevel) {
+        removeAllDrawables();
+        setLayerGroup(nullptr, changes);
+        layerTweaker.reset();
+    }
     if (!layerGroup) {
-        if (auto layerGroup_ = context.createTileLayerGroup(layerIndex, /*initialCapacity=*/64, getID(), true)) {
+        if (auto layerGroup_ = context.createTileLayerGroup(
+                layerIndex, /*initialCapacity=*/64, getID(), /*renderToTerrain=*/!seaLevel)) {
+            layerGroup_->setSeaLevel(seaLevel);
             setLayerGroup(std::move(layerGroup_), changes);
         } else {
             return;

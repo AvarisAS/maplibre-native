@@ -64,6 +64,21 @@ void FillLayer::Impl::stringifyLayout(rapidjson::Writer<rapidjson::StringBuffer>
 
 // Layout properties
 
+PropertyValue<ElevationReferenceType> FillLayer::getDefaultFillElevationReference() {
+    return FillElevationReference::defaultValue();
+}
+
+const PropertyValue<ElevationReferenceType>& FillLayer::getFillElevationReference() const {
+    return impl().layout.get<FillElevationReference>();
+}
+
+void FillLayer::setFillElevationReference(const PropertyValue<ElevationReferenceType>& value) {
+    if (value == getFillElevationReference()) return;
+    auto impl_ = mutableImpl();
+    impl_->layout.get<FillElevationReference>() = value;
+    baseImpl = std::move(impl_);
+    observer->onLayerChanged(*this);
+}
 PropertyValue<float> FillLayer::getDefaultFillSortKey() {
     return FillSortKey::defaultValue();
 }
@@ -299,7 +314,8 @@ enum class Property : uint8_t {
     FillPatternTransition,
     FillTranslateTransition,
     FillTranslateAnchorTransition,
-    FillSortKey = kPaintPropertyCount,
+    FillElevationReference = kPaintPropertyCount,
+    FillSortKey,
 };
 
 template <typename T>
@@ -322,6 +338,7 @@ constexpr const auto layerProperties = mapbox::eternal::hash_map<mapbox::eternal
      {"fill-pattern-transition", toUint8(Property::FillPatternTransition)},
      {"fill-translate-transition", toUint8(Property::FillTranslateTransition)},
      {"fill-translate-anchor-transition", toUint8(Property::FillTranslateAnchorTransition)},
+     {"fill-elevation-reference", toUint8(Property::FillElevationReference)},
      {"fill-sort-key", toUint8(Property::FillSortKey)}});
 
 StyleProperty getLayerProperty(const FillLayer& layer, Property property) {
@@ -354,6 +371,8 @@ StyleProperty getLayerProperty(const FillLayer& layer, Property property) {
             return makeStyleProperty(layer.getFillTranslateTransition());
         case Property::FillTranslateAnchorTransition:
             return makeStyleProperty(layer.getFillTranslateAnchorTransition());
+        case Property::FillElevationReference:
+            return makeStyleProperty(layer.getFillElevationReference());
         case Property::FillSortKey:
             return makeStyleProperty(layer.getFillSortKey());
     }
@@ -459,6 +478,16 @@ std::optional<Error> FillLayer::setPropertyInternal(const std::string& name, con
         }
 
         setFillTranslateAnchor(*typedValue);
+        return std::nullopt;
+    }
+    if (property == Property::FillElevationReference) {
+        Error error;
+        const auto& typedValue = convert<PropertyValue<ElevationReferenceType>>(value, error, false, false);
+        if (!typedValue) {
+            return error;
+        }
+
+        setFillElevationReference(*typedValue);
         return std::nullopt;
     }
 

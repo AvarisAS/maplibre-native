@@ -113,6 +113,12 @@ public:
 
     bool shouldRenderToTerrain() const { return renderToTerrain; }
 
+    /// Avaris: the group's drawables stand at sea level under terrain (`*-elevation-reference:
+    /// sea`): drawn flat at 0 m in the main pass, depth-tested against the terrain, instead of
+    /// draped. Drawables added to a tile layer group take the flag (gfx::Drawable::getSeaLevel).
+    bool isSeaLevel() const { return seaLevel; }
+    void setSeaLevel(bool value) { seaLevel = value; }
+
     /// Set observer
     void setObserver(gfx::ContextObserver*);
 
@@ -123,6 +129,7 @@ protected:
     std::vector<LayerTweakerWeakPtr> layerTweakers;
     std::string name;
     bool renderToTerrain;
+    bool seaLevel = false;
     gfx::ContextObserver* observer;
 };
 

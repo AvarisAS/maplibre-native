@@ -171,7 +171,9 @@ void SymbolLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
         // shader can displace symbol anchors by the terrain elevation
         const bool terrainEnabled = parameters.terrain && parameters.terrain->isEnabled();
         std::optional<RenderTerrain::TerrainData> terrainData;
-        if (terrainEnabled) {
+        // Avaris: a sea-referenced symbol keeps no DEM (dem_enabled 0, elevation 0 m) but keeps the
+        // depth-texture occlusion, so land in front of it still hides it.
+        if (terrainEnabled && !seaLevel) {
             terrainData = parameters.terrain->getTerrainData(tileID);
         }
         if (parameters.terrain) {

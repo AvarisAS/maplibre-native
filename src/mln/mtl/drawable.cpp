@@ -243,6 +243,12 @@ void Drawable::draw(PaintParameters& parameters) const {
 
         // If we have a stencil state, we may be able to reuse it, if the tile masks haven't changed.
         // We assume that only the reference value needs to be compared.
+        // Avaris: a sea-level drawable over terrain tests against the terrain's depth
+        // (`*-elevation-reference: sea`), so land in front of it hides it.
+        const bool seaDepth = getSeaLevel() && parameters.terrain != nullptr;
+        if (impl->depthStencilState && seaDepth != impl->previousSeaDepth) {
+            impl->depthStencilState.reset();
+        }
         if (impl->depthStencilState && enableStencil) {
             newStencilMode = parameters.stencilModeForClipping(tileID->toUnwrapped());
             if (newStencilMode->ref != impl->previousStencilMode.ref) {
@@ -254,9 +260,11 @@ void Drawable::draw(PaintParameters& parameters) const {
             if (enableStencil && !newStencilMode) {
                 newStencilMode = parameters.stencilModeForClipping(tileID->toUnwrapped());
             }
-            const auto depthMode = getEnableDepth()
+            const auto depthMode = seaDepth ? parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly)
+                                   : getEnableDepth()
                                        ? parameters.depthModeForSublayer(getSubLayerIndex(), getDepthType())
                                        : gfx::DepthMode::disabled();
+            impl->previousSeaDepth = seaDepth;
             const auto stencilMode = enableStencil ? parameters.stencilModeForClipping(tileID->toUnwrapped())
                                                    : gfx::StencilMode::disabled();
             impl->depthStencilState = context.makeDepthStencilState(depthMode, stencilMode, renderable);

@@ -125,6 +125,17 @@ mat4 PaintParameters::matrixForTile(const UnwrappedTileID& tileID, bool aligned)
 
 mat4 PaintParameters::clipMatrixForTile(const UnwrappedTileID& tileID) const {
     if (currentDrapeTile[3] == 0.0f) {
+#if !MLN_RENDER_BACKEND_OPENGL
+        if (terrain) {
+            // Avaris: over terrain the only stencil-clipped drawables in the main pass are the
+            // sea-level ones, whose matrices are remapped to the [0, 1] clip volume (see
+            // LayerTweaker::getTileMatrix); remap the masks the same way, so a mask quad near the
+            // camera is not clipped away in the GL near half.
+            mat4 matrix = matrixForTile(tileID);
+            matrix::remapClipZToUnitRange(matrix);
+            return matrix;
+        }
+#endif
         return matrixForTile(tileID);
     }
 

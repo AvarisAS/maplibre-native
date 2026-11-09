@@ -829,6 +829,9 @@ global.mbglType = function(property) {
             if (/^(text|icon)-anchor$/.test(originalPropertyName(property))) {
                 type = 'SymbolAnchor'
             }
+            if (/-elevation-reference$/.test(originalPropertyName(property))) {
+                type = 'ElevationReference';
+            }
             return `mln::style::${type}Type`;
         }
         case 'color':

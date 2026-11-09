@@ -320,7 +320,10 @@ void Drawable::draw(PaintParameters& parameters) const {
         &pushData,
         dispatcher);
 
-    if (enableDepth) {
+    if (getSeaLevel() && parameters.terrain) {
+        // Avaris: flat at sea level, tested against the terrain's depth (`*-elevation-reference: sea`)
+        impl->pipelineInfo.setDepthMode(parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly));
+    } else if (enableDepth) {
         if (impl->depthFor3D.has_value()) {
             impl->pipelineInfo.setDepthMode(impl->depthFor3D.value());
         } else if (is3D) {

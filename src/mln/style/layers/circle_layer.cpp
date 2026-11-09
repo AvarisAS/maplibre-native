@@ -64,6 +64,21 @@ void CircleLayer::Impl::stringifyLayout(rapidjson::Writer<rapidjson::StringBuffe
 
 // Layout properties
 
+PropertyValue<ElevationReferenceType> CircleLayer::getDefaultCircleElevationReference() {
+    return CircleElevationReference::defaultValue();
+}
+
+const PropertyValue<ElevationReferenceType>& CircleLayer::getCircleElevationReference() const {
+    return impl().layout.get<CircleElevationReference>();
+}
+
+void CircleLayer::setCircleElevationReference(const PropertyValue<ElevationReferenceType>& value) {
+    if (value == getCircleElevationReference()) return;
+    auto impl_ = mutableImpl();
+    impl_->layout.get<CircleElevationReference>() = value;
+    baseImpl = std::move(impl_);
+    observer->onLayerChanged(*this);
+}
 PropertyValue<float> CircleLayer::getDefaultCircleSortKey() {
     return CircleSortKey::defaultValue();
 }
@@ -419,7 +434,8 @@ enum class Property : uint8_t {
     CircleStrokeWidthTransition,
     CircleTranslateTransition,
     CircleTranslateAnchorTransition,
-    CircleSortKey = kPaintPropertyCount,
+    CircleElevationReference = kPaintPropertyCount,
+    CircleSortKey,
 };
 
 template <typename T>
@@ -450,6 +466,7 @@ constexpr const auto layerProperties = mapbox::eternal::hash_map<mapbox::eternal
      {"circle-stroke-width-transition", toUint8(Property::CircleStrokeWidthTransition)},
      {"circle-translate-transition", toUint8(Property::CircleTranslateTransition)},
      {"circle-translate-anchor-transition", toUint8(Property::CircleTranslateAnchorTransition)},
+     {"circle-elevation-reference", toUint8(Property::CircleElevationReference)},
      {"circle-sort-key", toUint8(Property::CircleSortKey)}});
 
 StyleProperty getLayerProperty(const CircleLayer& layer, Property property) {
@@ -498,6 +515,8 @@ StyleProperty getLayerProperty(const CircleLayer& layer, Property property) {
             return makeStyleProperty(layer.getCircleTranslateTransition());
         case Property::CircleTranslateAnchorTransition:
             return makeStyleProperty(layer.getCircleTranslateAnchorTransition());
+        case Property::CircleElevationReference:
+            return makeStyleProperty(layer.getCircleElevationReference());
         case Property::CircleSortKey:
             return makeStyleProperty(layer.getCircleSortKey());
     }
@@ -625,6 +644,16 @@ std::optional<Error> CircleLayer::setPropertyInternal(const std::string& name, c
         }
 
         setCircleTranslateAnchor(*typedValue);
+        return std::nullopt;
+    }
+    if (property == Property::CircleElevationReference) {
+        Error error;
+        const auto& typedValue = convert<PropertyValue<ElevationReferenceType>>(value, error, false, false);
+        if (!typedValue) {
+            return error;
+        }
+
+        setCircleElevationReference(*typedValue);
         return std::nullopt;
     }
 

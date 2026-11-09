@@ -57,6 +57,12 @@ enum class HillshadeMethodType : uint8_t {
     Basic
 };
 
+/// Avaris: the surface a layer stands on under 3D terrain (`*-elevation-reference`).
+enum class ElevationReferenceType : bool {
+    Ground,
+    Sea
+};
+
 enum class TranslateAnchorType : bool {
     Map,
     Viewport

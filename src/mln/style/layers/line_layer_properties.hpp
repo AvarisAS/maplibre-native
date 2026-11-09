@@ -21,6 +21,11 @@ struct LineCap : LayoutProperty<LineCapType> {
     static LineCapType defaultValue() { return LineCapType::Butt; }
 };
 
+struct LineElevationReference : LayoutProperty<ElevationReferenceType> {
+    static constexpr const char *name() { return "line-elevation-reference"; }
+    static ElevationReferenceType defaultValue() { return ElevationReferenceType::Ground; }
+};
+
 struct LineJoin : DataDrivenLayoutProperty<LineJoinType> {
     static constexpr const char *name() { return "line-join"; }
     static LineJoinType defaultValue() { return LineJoinType::Miter; }
@@ -91,6 +96,7 @@ struct LineWidth : DataDrivenPaintProperty<float, attributes::width, uniforms::w
 
 class LineLayoutProperties : public Properties<
     LineCap,
+    LineElevationReference,
     LineJoin,
     LineMiterLimit,
     LineRoundLimit,

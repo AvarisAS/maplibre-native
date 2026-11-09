@@ -349,6 +349,16 @@ void RenderCircleLayer::update(gfx::ShaderRegistry& shaders,
         }
     }
     auto* tileLayerGroup = static_cast<TileLayerGroup*>(layerGroup.get());
+    {
+        // Avaris: `circle-elevation-reference: sea`
+        const auto& elevationReference = impl_cast(baseImpl).layout.get<style::CircleElevationReference>();
+        const bool seaLevel = elevationReference.isConstant() &&
+                              elevationReference.asConstant() == style::ElevationReferenceType::Sea;
+        if (tileLayerGroup->isSeaLevel() != seaLevel) {
+            tileLayerGroup->setSeaLevel(seaLevel);
+            tileLayerGroup->visitDrawables([&](gfx::Drawable& drawable) { drawable.setSeaLevel(seaLevel); });
+        }
+    }
     if (!layerTweaker) {
         layerTweaker = std::make_shared<CircleLayerTweaker>(getID(), evaluatedProperties);
         layerGroup->addLayerTweaker(layerTweaker);

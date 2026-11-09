@@ -289,6 +289,21 @@ void SymbolLayer::setSymbolAvoidEdges(const PropertyValue<bool>& value) {
     baseImpl = std::move(impl_);
     observer->onLayerChanged(*this);
 }
+PropertyValue<ElevationReferenceType> SymbolLayer::getDefaultSymbolElevationReference() {
+    return SymbolElevationReference::defaultValue();
+}
+
+const PropertyValue<ElevationReferenceType>& SymbolLayer::getSymbolElevationReference() const {
+    return impl().layout.get<SymbolElevationReference>();
+}
+
+void SymbolLayer::setSymbolElevationReference(const PropertyValue<ElevationReferenceType>& value) {
+    if (value == getSymbolElevationReference()) return;
+    auto impl_ = mutableImpl();
+    impl_->layout.get<SymbolElevationReference>() = value;
+    baseImpl = std::move(impl_);
+    observer->onLayerChanged(*this);
+}
 PropertyValue<SymbolPlacementType> SymbolLayer::getDefaultSymbolPlacement() {
     return SymbolPlacement::defaultValue();
 }
@@ -1154,6 +1169,7 @@ enum class Property : uint8_t {
     IconTextFit,
     IconTextFitPadding,
     SymbolAvoidEdges,
+    SymbolElevationReference,
     SymbolPlacement,
     SymbolScreenSpace,
     SymbolSortKey,
@@ -1233,6 +1249,7 @@ constexpr const auto layerProperties = mapbox::eternal::hash_map<mapbox::eternal
      {"icon-text-fit", toUint8(Property::IconTextFit)},
      {"icon-text-fit-padding", toUint8(Property::IconTextFitPadding)},
      {"symbol-avoid-edges", toUint8(Property::SymbolAvoidEdges)},
+     {"symbol-elevation-reference", toUint8(Property::SymbolElevationReference)},
      {"symbol-placement", toUint8(Property::SymbolPlacement)},
      {"symbol-screen-space", toUint8(Property::SymbolScreenSpace)},
      {"symbol-sort-key", toUint8(Property::SymbolSortKey)},
@@ -1350,6 +1367,8 @@ StyleProperty getLayerProperty(const SymbolLayer& layer, Property property) {
             return makeStyleProperty(layer.getIconTextFitPadding());
         case Property::SymbolAvoidEdges:
             return makeStyleProperty(layer.getSymbolAvoidEdges());
+        case Property::SymbolElevationReference:
+            return makeStyleProperty(layer.getSymbolElevationReference());
         case Property::SymbolPlacement:
             return makeStyleProperty(layer.getSymbolPlacement());
         case Property::SymbolScreenSpace:
@@ -1742,6 +1761,16 @@ std::optional<Error> SymbolLayer::setPropertyInternal(const std::string& name, c
         }
 
         setIconTextFitPadding(*typedValue);
+        return std::nullopt;
+    }
+    if (property == Property::SymbolElevationReference) {
+        Error error;
+        const auto& typedValue = convert<PropertyValue<ElevationReferenceType>>(value, error, false, false);
+        if (!typedValue) {
+            return error;
+        }
+
+        setSymbolElevationReference(*typedValue);
         return std::nullopt;
     }
     if (property == Property::SymbolPlacement) {

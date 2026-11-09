@@ -66,6 +66,11 @@ const CollisionGroups::CollisionGroup& CollisionGroups::get(const std::string& s
 
 using namespace style;
 
+/// Avaris: `symbol-elevation-reference: sea` - the anchors stand at 0 m, not on the DEM.
+static bool isSeaLevel(const SymbolBucket& bucket) {
+    return bucket.layout->get<style::SymbolElevationReference>() == style::ElevationReferenceType::Sea;
+}
+
 // PlacementContext implementation
 class PlacementContext {
     std::reference_wrapper<const SymbolBucket> bucket;
@@ -90,7 +95,7 @@ public:
           partiallyEvaluatedTextSize(bucket_.textSizeBinder->evaluateForZoom(placementZoom)),
           partiallyEvaluatedIconSize(bucket_.iconSizeBinder->evaluateForZoom(placementZoom)),
           avoidEdges(std::move(avoidEdges_)),
-          elevation(terrain ? terrain->elevationSampler(renderTile_.id) : std::nullopt) {}
+          elevation(terrain && !isSeaLevel(bucket_) ? terrain->elevationSampler(renderTile_.id) : std::nullopt) {}
 
     const SymbolBucket& getBucket() const { return bucket.get(); }
     /// Tile-local point -> terrain elevation for collision projection; null off terrain
@@ -800,7 +805,7 @@ bool Placement::updateBucketDynamicAttributeData(SymbolBucket& bucket,
     // With 3D terrain, line-placed labels are projected here on the CPU and must be lifted
     // onto the surface (the vertex shader elevates point symbols only).
     std::optional<SymbolElevationFn> elevation;
-    if (terrain) {
+    if (terrain && !isSeaLevel(bucket)) {
         elevation = terrain->elevationSampler(tile.id);
     }
     const SymbolElevationFn* getElevation = elevation ? &*elevation : nullptr;

@@ -37,7 +37,10 @@ mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
                                  bool aligned,
                                  bool renderToTerrain,
                                  bool* renderingToTerrain) {
-    if (renderToTerrain && parameters.terrain) {
+    // Avaris: a sea-level drawable (`*-elevation-reference: sea`) is not draped; it is drawn
+    // flat at z = 0 in the main pass with the terrain's own projection.
+    const bool seaLevel = drawable.getSeaLevel() && parameters.terrain;
+    if (renderToTerrain && parameters.terrain && !seaLevel) {
         if (renderingToTerrain) {
             *renderingToTerrain = true;
         }
@@ -71,6 +74,27 @@ mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
     }
     if (renderingToTerrain) {
         *renderingToTerrain = false;
+    }
+    if (seaLevel) {
+        mat4 matrix = getTileMatrix(tileID,
+                                    parameters.state,
+                                    parameters.transformParams,
+                                    parameters.currentLayer,
+                                    translation,
+                                    anchor,
+                                    drawable.getOrigin(),
+                                    drawable.getIs3D(),
+                                    drawable.getEnableDepth(),
+                                    drawable.getSubLayerIndex(),
+                                    nearClipped,
+                                    inViewportPixelUnits,
+                                    aligned);
+#if !MLN_RENDER_BACKEND_OPENGL
+        // Depth-tested against the terrain mesh, whose matrix is remapped to the [0, 1] clip
+        // volume (TerrainLayerTweaker); the same remap here keeps the two depths comparable.
+        matrix::remapClipZToUnitRange(matrix);
+#endif
+        return matrix;
     }
     return getTileMatrix(tileID,
                          parameters.state,

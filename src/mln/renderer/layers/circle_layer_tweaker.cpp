@@ -92,7 +92,9 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
         // shader can displace circle centers by the terrain elevation
         const bool terrainEnabled = parameters.terrain && parameters.terrain->isEnabled();
         std::optional<RenderTerrain::TerrainData> terrainData;
-        if (terrainEnabled) {
+        // Avaris: a sea-level circle (`circle-elevation-reference: sea`) stands at 0 m and is
+        // depth-tested against the terrain instead (gfx::Drawable::getSeaLevel).
+        if (terrainEnabled && !layerGroup.isSeaLevel()) {
             terrainData = parameters.terrain->getTerrainData(tileID);
         }
         if (parameters.terrain) {
