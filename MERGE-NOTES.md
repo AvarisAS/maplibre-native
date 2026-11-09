@@ -153,3 +153,26 @@ this fork can merge `main`.
 - Built by hand like `.3` from `46645127` (merges up to `5a75d66d`, `--embed_label=maplibre_ios_7.0.0-avaris.4`, LICENSE.md
   in the zip), checksum `5bbfd4ef257e69525dfa3f3319aa24fb279f0610723e7b14c6c80dde75c43a5c`. Release asset, Package.swift and tag `7.0.0-avaris.4` in
   AvarisAS/maplibre-native-distribution.
+
+## 7.0.0-avaris.5 (2026-11-09)
+
+- `avaris/sea-elevation-reference` (`fffe53e2`) merged into `avaris/main`:
+  `fill-`, `line-`, `circle-` and `symbol-elevation-reference` (`ground` default | `sea`),
+  Mapbox naming, layout, constant only. A `sea` fill or line is kept out of the terrain drape
+  (its tile layer group has `renderToTerrain` off and `seaLevel` on) and drawn flat at z = 0 in
+  the main pass, its matrix remapped to the [0, 1] clip volume like the terrain's, depth-tested
+  read-only against the terrain mesh (Metal, GL, Vulkan; WebGPU not done). Tile clip masks in
+  the main pass under terrain are remapped the same way. A `sea` circle stands at 0 m and is
+  depth-tested likewise; a `sea` symbol gets no DEM (anchor at 0 m, also in placement) and
+  keeps the depth-texture occlusion. Darwin: `MLN*StyleLayer.*ElevationReference`.
+  A water surface is a style option, not engine code: a world fill with
+  `fill-elevation-reference: sea`.
+- Tests (macOS Metal): new `TerrainSeaLevel.*` (3); `mbgl-test-runner` over
+  `*TransformState*:*Transform*:*Terrain*:*Sky*:*Collision*:*Placement*:*Symbol*:*StyleParser*:
+  *Layer*:*Conversion*:*Style.*` minus `MainResourceLoader.*`, 241 pass.
+- Seen in an iPhone 18 Pro simulator (iOS 27.2) in MarineCatch Camp over Hattsteinan, pitched
+  70°: light sectors flat on the water instead of draped on the ×3 seabed; aggressive pan/zoom,
+  no crash.
+- Built by hand like `.4` from `fffe53e2` (`--embed_label=maplibre_ios_7.0.0-avaris.5`, LICENSE.md
+  in the zip), checksum `ea4a2e0c25859976ca91880086fa64870cd3b2a7bd28fc9245dcbdbaf5fe635a`.
+  Release asset, Package.swift and tag `7.0.0-avaris.5` in AvarisAS/maplibre-native-distribution.
