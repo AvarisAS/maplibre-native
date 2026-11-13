@@ -89,6 +89,12 @@ mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
                                     nearClipped,
                                     inViewportPixelUnits,
                                     aligned);
+        // Avaris: the plane stands 25 cm above 0 m. Along a shore and over shallows the
+        // terrain mesh is itself about 0 m, and the two at one height z-fought as the DEM's
+        // tiles swapped under a moving camera: the water flickered above and below the land.
+        // Tile matrices keep z in metres, so this is a lift of 25 cm.
+        constexpr double seaLiftMeters = 0.25;
+        matrix::translate(matrix, matrix, 0, 0, seaLiftMeters);
 #if !MLN_RENDER_BACKEND_OPENGL
         // Depth-tested against the terrain mesh, whose matrix is remapped to the [0, 1] clip
         // volume (TerrainLayerTweaker); the same remap here keeps the two depths comparable.
