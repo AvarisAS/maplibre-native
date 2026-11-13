@@ -32,6 +32,13 @@
 namespace mln {
 namespace mtl {
 
+namespace {
+// Depth32Float: a constant bias of n moves a depth by about n ulps; the slope term covers the
+// grazing angles of a pitched camera, where coplanar depths differ the most per pixel.
+constexpr float seaDepthBias = -32.0f;
+constexpr float seaSlopeBias = -2.0f;
+} // namespace
+
 struct IndexBuffer : public gfx::IndexBufferBase {
     IndexBuffer(std::unique_ptr<gfx::IndexBuffer>&& buffer_)
         : buffer(std::move(buffer_)) {}
@@ -273,6 +280,15 @@ void Drawable::draw(PaintParameters& parameters) const {
         }
         renderPass.setDepthStencilState(impl->depthStencilState);
         renderPass.setStencilReference(impl->previousStencilMode.ref);
+        // Avaris: the sea plane is coplanar with the terrain wherever the seabed has no
+        // depth (0 m) and along every shore, and the two z-fought in screen-row stripes.
+        // A depth bias toward the camera, as for any decal on a surface, settles the tie for
+        // the water without moving it; it is reset for every other drawable.
+        if (seaDepth) {
+            encoder->setDepthBias(seaDepthBias, seaSlopeBias, 0.0f);
+        } else {
+            encoder->setDepthBias(0.0f, 0.0f, 0.0f);
+        }
     }
 
     for (const auto& seg_ : impl->segments) {
