@@ -19,6 +19,7 @@
 #include <cmath>
 #include <memory>
 #include <string>
+#include <vector>
 
 using namespace mln;
 
@@ -157,5 +158,77 @@ TEST(TerrainSeaLevel, ASeaLevelShapeShowsOverTheSeabed) {
     for (const std::string kind : {"fill", "line", "circle"}) {
         const int sea = redPixels(kind, "sea", -100.0);
         EXPECT_GT(sea, 300) << kind << " at sea level over the seabed shows";
+    }
+}
+
+// Avaris stripes investigation: a translucent world fill at sea level over a flat seabed, pitched
+// and close, as MarineCatch HQ draws its water surface. Every pixel below the horizon should be the
+// one blend of blue over white; a pixel that is white (sea lost) or darker (sea twice) is a stripe.
+namespace {
+struct SeaStats { int below = 0, white = 0, single = 0, other = 0; };
+
+SeaStats seaSurface(double groundMetres, int sourceMaxzoom, double zoom, double pitch, const std::string& tag) {
+    util::RunLoop loop;
+    auto fileSource = std::make_shared<StubFileSource>(ResourceOptions::Default(), ClientOptions());
+    const std::string dem = flatDEMTile(groundMetres);
+    fileSource->tileResponse = [&](const Resource&) {
+        Response res;
+        res.data = std::make_shared<std::string>(dem);
+        return res;
+    };
+    HeadlessFrontend frontend{{512, 512}, 1};
+    MapAdapter map(frontend, MapObserver::nullObserver(), fileSource,
+                   MapOptions().withMapMode(MapMode::Static).withSize(frontend.getSize()));
+    map.getStyle().loadJSON(R"({
+  "version": 8,
+  "sources": {
+    "dem": {"type": "raster-dem", "tiles": ["http://example.com/dem/{z}-{x}-{y}.png"],
+            "encoding": "mapbox", "maxzoom": 11, "tileSize": 256},
+    "sea": {"type": "geojson", "maxzoom": )" + std::to_string(sourceMaxzoom) + R"(, "data": {"type": "Feature", "properties": {},
+      "geometry": {"type": "Polygon", "coordinates": [[[-180, -85], [180, -85], [180, 85], [-180, 85], [-180, -85]]]}}}
+  },
+  "terrain": {"source": "dem", "exaggeration": 1.0},
+  "layers": [{"id": "bg", "type": "background", "paint": {"background-color": "lime"}},
+             {"id": "sea", "type": "fill", "source": "sea", "layout": {"fill-elevation-reference": "sea"},
+              "paint": {"fill-color": "blue", "fill-opacity": 0.5, "fill-antialias": false}}]
+})");
+    map.jumpTo(CameraOptions().withCenter(LatLng{68.08, 13.17}).withZoom(zoom).withPitch(pitch));
+    PremultipliedImage image;
+    for (int i = 0; i < 6; ++i) {
+        loop.runOnce();
+        image = frontend.render(map).image;
+    }
+    if (const char* dir = std::getenv("SEA_LEVEL_DUMP")) {
+        util::write_file(std::string(dir) + "/surface-" + tag + ".png", encodePNG(image));
+    }
+    SeaStats s;
+    // lower half only: certainly ground, not sky
+    for (uint32_t y = image.size.height / 2; y < image.size.height; ++y) {
+        for (uint32_t x = 0; x < image.size.width; ++x) {
+            const uint8_t* px = image.data.get() + (y * image.size.width + x) * 4;
+            ++s.below;
+            if (px[0] < 20 && px[1] > 200 && px[2] < 20) ++s.white; // terrain (lime) with no sea
+            else if (px[0] > 110 && px[0] < 145 && px[2] > 240) ++s.single;
+            else ++s.other;
+        }
+    }
+    return s;
+}
+} // namespace
+
+TEST(TerrainSeaLevel, StripesInvestigation) {
+    struct Case { double ground; int maxzoom; double zoom; double pitch; };
+    std::vector<Case> cases;
+    for (double g : {-0.3, -1.0, -2.0, -4.0})
+        for (int mz : {6, 10, 12, 14, 16})
+            for (auto zp : {std::pair{16.0, 70.0}, std::pair{18.0, 75.0}}) cases.push_back(Case{g, mz, zp.first, zp.second});
+    for (const Case c : cases) {
+        const std::string tag = std::to_string(int(c.ground*10)) + "_mz" + std::to_string(c.maxzoom) + "_z" +
+                                std::to_string(int(c.zoom)) + "_p" + std::to_string(int(c.pitch));
+        const auto s = seaSurface(c.ground, c.maxzoom, c.zoom, c.pitch, tag);
+        printf("[stripes] %s below=%d white=%d single=%d other=%d\n", tag.c_str(), s.below, s.white, s.single, s.other);
+        // Measured 2026-11-13 (macOS Metal): only the maxzoom-6 source loses the sea (up to 46 %
+        // of the lower half, bounded by one huge triangle's edge and a row-aligned depth crossing).
+        if (c.maxzoom >= 10) EXPECT_EQ(0, s.white) << tag;
     }
 }
