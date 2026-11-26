@@ -204,6 +204,22 @@ private:
 public:
     uint32_t currentLayer;
     float depthRangeSize;
+
+    /// Avaris: the depth buffer of the pass being drawn is reversed (near 1, far 0, greater is
+    /// nearer): the main pass on Metal while there is terrain. With the near plane at 1 px, the
+    /// usual mapping packs the whole scene just under 1.0, where a float has about 6e-8 between
+    /// values: a metre of height is a handful of steps at z13 and less than one from z10 out, so
+    /// what stands at sea level could not be told from low land. Reversed, the steps shrink with
+    /// the value and a metre is thousands of them at any zoom. Whatever writes or tests depth
+    /// through depthModeFor3D() must project with matrix::reverseUnitClipZ while this is set
+    /// (the terrain mesh, sea-level drawables and fill extrusions do). Offscreen targets (the
+    /// drape, the terrain depth pass that symbols read) keep the usual depth.
+    bool reversedDepth = false;
+
+    /// A sea-level drawable (`*-elevation-reference: sea`) is drawn this much nearer in reversed
+    /// depth, relatively: float rounding in the two matrices, not a lift (the geometry is at 0 m).
+    /// As a height it is the camera's height above the sea times 1e-6.
+    static constexpr double seaLevelDepthScale = 1.0 + 1.0e-6;
     uint32_t opaquePassCutoff = 0;
     float symbolFadeChange;
     const uint64_t frameCount;

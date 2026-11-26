@@ -28,11 +28,15 @@ public:
 
     ~TerrainLayerTweaker() = default;
 
-    void execute(LayerGroupBase&, const PaintParameters&);
+    /// `depthPass`: the group is the one drawn into the offscreen depth target that symbols read,
+    /// which keeps the usual depth while the main pass is reversed (PaintParameters::reversedDepth).
+    void execute(LayerGroupBase&, const PaintParameters&, bool depthPass = false);
 
 protected:
 #if MLN_UBO_CONSOLIDATION
+    // One per group: their matrices differ when the main pass has a reversed depth.
     gfx::UniformBufferPtr drawableUniformBuffer;
+    gfx::UniformBufferPtr depthDrawableUniformBuffer;
 #endif
 
     const RenderTerrain* terrain = nullptr;

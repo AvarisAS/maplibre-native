@@ -106,6 +106,10 @@ void FillExtrusionLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintP
         if (onTerrain) {
             // The mesh's clip z is remapped from [-1, 1] to [0, 1] on these backends; match it.
             matrix::remapClipZToUnitRange(matrix);
+            // Avaris: and reversed with it in the main pass (PaintParameters::reversedDepth).
+            if (parameters.reversedDepth) {
+                matrix::reverseUnitClipZ(matrix);
+            }
         }
 #endif
 

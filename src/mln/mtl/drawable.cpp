@@ -33,10 +33,13 @@ namespace mln {
 namespace mtl {
 
 namespace {
-// Depth32Float: a constant bias of n moves a depth by about n ulps; the slope term covers the
-// grazing angles of a pitched camera, where coplanar depths differ the most per pixel.
-constexpr float seaDepthBias = -32.0f;
-constexpr float seaSlopeBias = -2.0f;
+// Avaris: the rasteriser snaps a vertex to 1/256 px and leaves its depth alone, so two meshes of
+// the same sloping plane (the sea level and a seabed at 0 m) disagree by the plane's depth slope
+// over that distance, row by row: stripes. Measured on macOS Metal, a slope-scaled bias of 0.005
+// clears them at every zoom and pitch and 0.002 does not; this is four times the snap. Reversed
+// depth, so nearer is greater and the bias is positive. No constant term: in a float depth buffer
+// Metal scales it by the largest depth of the primitive, which says nothing about the fragment.
+constexpr float seaSlopeBias = 1.0f / 64.0f;
 } // namespace
 
 struct IndexBuffer : public gfx::IndexBufferBase {
@@ -252,7 +255,9 @@ void Drawable::draw(PaintParameters& parameters) const {
         // We assume that only the reference value needs to be compared.
         // Avaris: a sea-level drawable over terrain tests against the terrain's depth
         // (`*-elevation-reference: sea`), so land in front of it hides it.
-        const bool seaDepth = getSeaLevel() && parameters.terrain != nullptr;
+        // A circle is not tested per fragment: its tweaker turns the depth off over terrain and
+        // the shader tests the centre instead (mtl/circle.hpp).
+        const bool seaDepth = getSeaLevel() && parameters.terrain != nullptr && getEnableDepth();
         if (impl->depthStencilState && seaDepth != impl->previousSeaDepth) {
             impl->depthStencilState.reset();
         }
@@ -284,8 +289,8 @@ void Drawable::draw(PaintParameters& parameters) const {
         // depth (0 m) and along every shore, and the two z-fought in screen-row stripes.
         // A depth bias toward the camera, as for any decal on a surface, settles the tie for
         // the water without moving it; it is reset for every other drawable.
-        if (seaDepth) {
-            encoder->setDepthBias(seaDepthBias, seaSlopeBias, 0.0f);
+        if (seaDepth && parameters.reversedDepth) {
+            encoder->setDepthBias(0.0f, seaSlopeBias, 0.0f);
         } else {
             encoder->setDepthBias(0.0f, 0.0f, 0.0f);
         }
