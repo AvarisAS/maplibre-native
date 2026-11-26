@@ -137,7 +137,7 @@ void TransformState::getProjMatrix(mat4& projMatrix, uint16_t nearZ, bool aligne
     // Make sure the camera state is up-to-date
     updateCameraState();
 
-    mat4 worldToCamera = camera.getWorldToCamera(scale, viewportMode == ViewportMode::FlippedY);
+    mat4 worldToCamera = camera.getWorldToCamera(scale, viewportMode == ViewportMode::FlippedY, getLatLng().latitude());
     mat4 cameraToClip = camera.getCameraToClipPerspective(
         getFieldOfView(), static_cast<double>(size.width) / size.height, nearZ, farZ);
 
@@ -533,6 +533,14 @@ void TransformState::setEdgeInsets(const EdgeInsets& val) {
 
 LatLng TransformState::getLatLng(LatLng::WrapMode wrapMode) const {
     return {util::rad2deg(2 * std::atan(std::exp(y / Cc)) - 0.5 * pi), -x / Bc, wrapMode};
+}
+
+LatLng TransformState::latLngNearCenter(const LatLng& latLng) const {
+    const LatLng center = getLatLng();
+    const LatLng wrappedCenter = center.wrapped();
+    LatLng nearest = latLng.wrapped();
+    nearest.unwrapForShortestPath(wrappedCenter);
+    return {nearest.latitude(), nearest.longitude() + center.longitude() - wrappedCenter.longitude()};
 }
 
 double TransformState::getCenterAltitude() const {

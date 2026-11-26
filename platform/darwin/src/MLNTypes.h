@@ -139,52 +139,60 @@ typedef NS_ENUM(NSInteger, MLNOrnamentVisibility) {
 };
 
 /**
- Controls progressive loading of 3D-terrain content (draped tiles and drape re-renders).
+ Constants indicating how much work the map does per frame while it loads and draws 3D terrain.
 
- It trades initial-load sharpness for smoother interaction on weaker GPUs, so it is a
- per-map, hardware-driven choice set via ``MLNMapView/terrainLoadMode``.
-
- This is a rendering/performance option, not a style property, so it does not affect the
- final rendered image, only how the loading work is spread across frames. The ordinals
- must stay in sync with the native `mln::TerrainLoadMode`.
+ The mode trades the sharpness of the first view for smooth interaction on weaker GPUs, so it
+ is a per-map choice that depends on the hardware. It is not a style property. Besides spreading
+ the loading work over several frames, it sets how deep the terrain mesh goes past a coarse
+ elevation source and how many mesh tiles a frame may have, so it changes the final image:
+ close-ups are sharper in ``MLNTerrainLoadModeQuality``, and tilted views keep more detail in
+ the distance. It has no effect while the map is flat.
  */
 typedef NS_ENUM(NSUInteger, MLNTerrainLoadMode) {
   /**
-   No budget: all revealed tiles and drapes build immediately. Sharpest initial view; may
-   stall a frame on large bursts (e.g. zooming in over new coverage). Default.
+   No limit: all revealed tiles and drapes build at once. The sharpest first view, which may
+   stall a frame on a large burst, such as zooming in over new coverage. The terrain mesh
+   follows the view past a coarse elevation source, as MapLibre GL JS does, with up to 64 mesh
+   tiles. This is the default.
    */
   MLNTerrainLoadModeQuality,
   /**
-   Cap 32 new-tile builds and 16 drape re-renders per frame, a middle ground that keeps a
-   near-instant initial view while smoothing the worst interaction stalls.
+   At most 32 new tiles and 16 drape re-renders per frame, a middle ground that keeps a
+   near-instant first view while smoothing the worst stalls. The terrain mesh reaches zoom
+   level 15 over a coarse elevation source, with up to 48 mesh tiles.
    */
   MLNTerrainLoadModeBalanced,
   /**
-   Cap 8 new-tile builds and 4 drape re-renders per frame, smoothest interaction on weak
-   GPUs, with the most visible progressive fill-in.
+   At most 8 new tiles and 4 drape re-renders per frame, the smoothest interaction on weak
+   GPUs, with the most visible fill-in. The terrain mesh reaches zoom level 14 over a coarse
+   elevation source, with up to 24 mesh tiles.
    */
   MLNTerrainLoadModePerformance,
 };
 
 /**
- Controls the vertical skirts extruded from every 3D-terrain tile edge, set via
- ``MLNMapView/terrainSkirtLength``.
+ Constants indicating whether the edges of 3D terrain tiles are skirted.
 
- Skirts hide the hairline gaps (stitches) between neighbouring tiles at different zoom
- levels, but show as vertical artifacts where the map has a transparent background, so
- which one you want is a per-map tradeoff. The ordinals must stay in sync with the native
- `mln::TerrainSkirtLength`.
+ A skirt is a vertical curtain below a tile edge. Skirts hide the hairline gaps between
+ neighboring terrain tiles of different zoom levels, but they show as vertical artifacts where
+ the map has a transparent background. It has no effect while the map is flat.
  */
 typedef NS_ENUM(NSUInteger, MLNTerrainSkirtLength) {
   /**
-   Skirt every tile edge by ~1/5 of the tile's width at the current zoom. Default.
+   Every tile edge gets a skirt about a fifth of the tile's width at the current zoom level.
+   This is the default.
    */
   MLNTerrainSkirtLengthAuto,
   /**
-   Build no skirts at all: no vertical artifacts over a transparent background, at the
-   cost of visible stitches between tiles at different zoom levels.
+   No skirts. Nothing shows through a transparent background, but gaps can show between tiles of
+   different zoom levels.
    */
   MLNTerrainSkirtLengthNone,
+  /**
+   Skirt a tile edge only where another tile of the mesh lies beside it, so the stitches
+   close and the edges at the end of the mesh show no vertical artifacts.
+   */
+  MLNTerrainSkirtLengthShared,
 };
 
 NS_ASSUME_NONNULL_END

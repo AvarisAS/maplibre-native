@@ -115,7 +115,7 @@ std::optional<LatLng> Renderer::queryTerrainPick(const ScreenCoordinate& pixel) 
 
 std::optional<double> Renderer::queryTerrainElevation(const LatLng& latLng) const {
     if (const RenderTerrain* terrain = impl->orchestrator.getRenderTerrain()) {
-        return terrain->getElevationAtLatLng(latLng);
+        return terrain->getElevationForLatLng(latLng);
     }
     return std::nullopt;
 }

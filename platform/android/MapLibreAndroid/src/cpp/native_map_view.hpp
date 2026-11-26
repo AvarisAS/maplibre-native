@@ -221,6 +221,8 @@ public:
 
     jni::Local<jni::Object<LatLng>> latLngForPixel(JNIEnv&, jfloat, jfloat);
 
+    jni::Local<jni::Object<LatLng>> latLngForPixelAtCenterAltitude(JNIEnv&, jfloat, jfloat);
+
     void latLngsForPixels(JNIEnv&, const jni::Array<jdouble>&, jni::Array<jdouble>&, jfloat);
 
     jni::Local<jni::Array<jlong>> addPolylines(JNIEnv&, const jni::Array<jni::Object<Polyline>>&);
@@ -350,9 +352,25 @@ public:
 
     jni::jdouble getCenterAltitude(JNIEnv&);
 
+    void setFieldOfView(JNIEnv&, jni::jdouble);
+
+    jni::jdouble getFieldOfView(JNIEnv&);
+
+    void setCenterFromEye(JNIEnv&, jni::jdouble, jni::jdouble, jni::jdouble, jni::jdouble, jni::jdouble, jni::jdouble);
+
+    jni::jdouble getTerrainElevation(JNIEnv&, jni::jdouble, jni::jdouble);
+
     void setTerrainSkirtLength(JNIEnv&, jni::jint);
 
     jni::jint getTerrainSkirtLength(JNIEnv&);
+
+    void setTerrainHazeColor(JNIEnv&, jni::jint);
+
+    jni::jint getTerrainHazeColor(JNIEnv&);
+
+    void setTerrainHazeRange(JNIEnv&, jni::jfloat);
+
+    jni::jfloat getTerrainHazeRange(JNIEnv&);
 
     void setCenterClampedToGround(JNIEnv&, jni::jboolean);
 

@@ -267,24 +267,22 @@ MLN_EXPORT IB_DESIGNABLE @interface MLNMapView : NSView<MLNStylable>
     NS_SWIFT_NAME(setTerrain(sourceIdentifier:exaggeration:));
 
 /**
- Selects the 3D-terrain progressive-loading budget.
+ How much work the map does per frame while it loads and draws 3D terrain.
 
- This is a rendering/performance option, not a style property, so it does not affect
- the final rendered image, only how the loading work of draped tiles and drape
- re-renders is spread across frames. It trades initial-load sharpness for smoother
- interaction on weaker GPUs. The default is ``MLNTerrainLoadModeQuality``. Has no effect
- when terrain is not enabled.
+ This is a performance option for the device, not a style property. See ``MLNTerrainLoadMode``.
+ The default is ``MLNTerrainLoadModeQuality``.
  */
 @property (nonatomic, assign) MLNTerrainLoadMode terrainLoadMode;
 
 /**
- Selects whether 3D-terrain tiles are skirted.
+ Whether the edges of 3D terrain tiles are skirted.
 
- Skirts hide the hairline gaps (stitches) between neighbouring terrain tiles at
- different zoom levels. ``MLNTerrainSkirtLengthNone`` suits a map drawn over a
- transparent background, where the skirts would otherwise show as vertical artifacts.
- The default is ``MLNTerrainSkirtLengthAuto``. Changing this property rebuilds the
- terrain mesh and every tile drawable. Has no effect when terrain is not enabled.
+ Skirts hide the gaps between terrain tiles of different zoom levels, but show as vertical
+ artifacts where the map has a transparent background, so use ``MLNTerrainSkirtLengthNone`` there.
+ ``MLNTerrainSkirtLengthShared`` keeps the skirts between tiles and drops them at the end of the
+ mesh.
+ Changing this property rebuilds the terrain mesh and every tile. The default is
+ ``MLNTerrainSkirtLengthAuto``.
  */
 @property (nonatomic, assign) MLNTerrainSkirtLength terrainSkirtLength;
 

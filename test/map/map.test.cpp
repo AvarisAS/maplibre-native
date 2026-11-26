@@ -14,6 +14,7 @@
 #include <mln/map/map_options.hpp>
 #include <mln/map/map_projection.hpp>
 #include <mln/math/log2.hpp>
+#include <mln/renderer/query.hpp>
 #include <mln/renderer/renderer.hpp>
 #include <mln/renderer/update_parameters.hpp>
 #include <mln/storage/file_source_manager.hpp>
@@ -366,6 +367,44 @@ TEST(Map, CameraToLatLngBoundsUnwrappedCrossDateLine) {
         test.map.latLngForPixel({double(size.width) / 2, double(size.height) / 2})));
 
     ASSERT_TRUE(test.map.latLngBoundsForCameraUnwrapped(camera).crossesAntimeridian());
+}
+
+TEST(Map, PixelForLatLngWithTheCenterPastTheAntimeridian) {
+    MapTest<> test;
+    test.map.setSize({512, 512});
+    test.map.setBounds(BoundOptions().withLatLngBounds(LatLngBounds::hull({-10.0, 170.0}, {10.0, 190.0})));
+    test.map.jumpTo(CameraOptions().withCenter(LatLng{0.0, 181.0}).withZoom(4.0));
+    ASSERT_NEAR(181.0, test.map.getCameraOptions().center->longitude(), 1e-9);
+
+    // A degree is 512 * 2^4 / 360 pixels at zoom 4.
+    const double degree = 512.0 * 16.0 / 360.0;
+    const MapProjection projection(test.map);
+    for (const auto& [longitude, x] : {std::pair{179.0, 256.0 - 2 * degree}, std::pair{-179.5, 256.0 - 0.5 * degree}}) {
+        EXPECT_NEAR(x, test.map.pixelForLatLng({0.0, longitude}).x, 1e-6) << longitude;
+        EXPECT_NEAR(x, projection.pixelForLatLng({0.0, longitude}).x, 1e-6) << longitude;
+    }
+}
+
+// https://github.com/maplibre/maplibre-native/issues/3580
+// iOS ends a pan with a moveBy that has a duration while the gesture is still in progress. Across the antimeridian the
+// move starts a world away, and annotation views placed through pixelForLatLng vanished until the center crossed.
+TEST(Map, PixelForLatLngDuringAFlingAcrossTheAntimeridian) {
+    MapTest<> test{1, MapMode::Continuous};
+    test.map.setSize({512, 512});
+    test.map.jumpTo(CameraOptions().withCenter(LatLng{0.0, 179.0}).withZoom(4.0));
+
+    const double degree = 512.0 * 16.0 / 360.0;
+    test.map.setGestureInProgress(true);
+    test.map.moveBy({-2.0 * degree, 0.0}, AnimationOptions(Seconds(10)));
+    const double center = test.map.getCameraOptions().center->longitude();
+    ASSERT_LT(center, -180.0);
+
+    const MapProjection projection(test.map);
+    for (const auto& [longitude, nearest] : {std::pair{179.5, -180.5}, std::pair{-179.5, -179.5}}) {
+        const double x = 256.0 + (nearest - center) * degree;
+        EXPECT_NEAR(x, test.map.pixelForLatLng({0.0, longitude}).x, 1e-6) << longitude;
+        EXPECT_NEAR(x, projection.pixelForLatLng({0.0, longitude}).x, 1e-6) << longitude;
+    }
 }
 
 TEST(Map, LatLngForPixelUnwrapped) {
@@ -2460,4 +2499,48 @@ TEST(Map, TileSelectionOptionsPublishUpdates) {
     check(&Map::setTileLodPitchThreshold, &UpdateParameters::tileLodPitchThreshold, 0.5);
     check(&Map::setTileLodZoomShift, &UpdateParameters::tileLodZoomShift, 1.0);
     check(&Map::setTileLodMode, &UpdateParameters::tileLodMode, TileLodMode::Distance);
+}
+
+TEST(Map, TileDrawsItsMissingTextOnceTheGlyphRangeLoads) {
+    MapTest<> test;
+    bool fail = true;
+    test.fileSource->glyphsResponse = [&](const Resource&) {
+        Response response;
+        if (fail) {
+            response.error = std::make_unique<Response::Error>(Response::Error::Reason::Other,
+                                                               "Failed by the test case");
+        } else {
+            response.data = std::make_shared<std::string>(util::read_file("test/fixtures/resources/glyphs.pbf"));
+        }
+        return response;
+    };
+
+    test.map.getStyle().loadJSON(R"({
+      "version": 8,
+      "glyphs": "local://glyphs/{fontstack}/{range}.pbf",
+      "sources": {
+        "a": {"type": "geojson", "data": {"type": "Point", "coordinates": [-60, 0]}},
+        "b": {"type": "geojson", "data": {"type": "FeatureCollection", "features": []}}
+      },
+      "layers": [
+        {"id": "a", "type": "symbol", "source": "a", "layout": {"text-field": "a", "text-font": ["Test Stack"]}},
+        {"id": "b", "type": "symbol", "source": "b", "layout": {"text-field": "a", "text-font": ["Test Stack"]}}
+      ]
+    })");
+
+    // Source "a"'s tile is laid out while the glyph range fails to load, and the still render fails.
+    EXPECT_ANY_THROW(test.frontend.render(test.map));
+
+    // Source "b"'s new tile needs the range too, so the next still render waits until it loads.
+    fail = false;
+    static_cast<GeoJSONSource*>(test.map.getStyle().getSource("b"))->setGeoJSON(Geometry<double>{Point<double>{60, 0}});
+    test.frontend.render(test.map);
+
+    const auto size = test.frontend.getSize();
+    const ScreenBox screen{{0, 0}, {static_cast<double>(size.width), static_cast<double>(size.height)}};
+    const auto drawn = [&](const std::string& layer) {
+        return test.frontend.getRenderer()->queryRenderedFeatures(screen, {std::vector<std::string>{layer}}).size();
+    };
+    EXPECT_EQ(drawn("b"), 1u);
+    EXPECT_EQ(drawn("a"), 1u);
 }

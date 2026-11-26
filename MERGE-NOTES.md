@@ -176,3 +176,13 @@ this fork can merge `main`.
 - Built by hand like `.4` from `fffe53e2` (`--embed_label=maplibre_ios_7.0.0-avaris.5`, LICENSE.md
   in the zip), checksum `ea4a2e0c25859976ca91880086fa64870cd3b2a7bd28fc9245dcbdbaf5fe635a`.
   Release asset, Package.swift and tag `7.0.0-avaris.5` in AvarisAS/maplibre-native-distribution.
+
+## Merge of feature/terrain-3d, 2026-11-26 (Android port, step 1)
+
+Merged upstream `feature/terrain-3d` at `f22ec6fcb11fc729128e324134d5dff45dde89e8` (#5119 getTerrainElevation, #5120 haze, #5121 field of view and eye camera, #4712, main up to iOS 7.1.0 / Android 13.8.0). 60 files conflicted.
+
+- Upstream taken as the base; Avaris behaviour re-applied: sea-level `*-elevation-reference`, the Metal sea depth bias (no 25 cm lift), far plane under sea level, sky and the Metal drape fog, `[terrain-cover]` logging, the perspective-ratio label cutoff, `elevationAtCoordinate:`, `setSkyProperties:`.
+- `TerrainEvaluatedPropsUBO`: bytes 0..64 are upstream's (haze at 32/48); the Metal fog fields follow from 64, size 128.
+- Replaced by upstream: our layer depth offset in the matrix and `DepthMode::disabled()` for 2D on Metal/Vulkan (c180d1be) gave way to #4868's depth range on every backend, so the sea drawable now sits in the 3D depth range on Metal; DEM ancestors are kept when loaded, not requested; the full-size drape rule is upstream's (nearest finest tiles, capped).
+- Checked: iOS `bazel build --compilation_mode=opt --//:renderer=metal //platform/ios:MapLibre.dynamic` and Android `:MapLibreAndroid:assembleOpenglRelease` (arm64-v8a) both build. **Not yet checked on the simulator:** the sea surface against the invariants (`docs/beslutninger/2026-11-26-vannflata-er-en-invariant.md` in MarineCatch); do that before any iOS release from this branch.
+- Android backend for the port: OpenGL ES.

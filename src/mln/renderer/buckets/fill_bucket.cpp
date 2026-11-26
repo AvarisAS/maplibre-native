@@ -15,14 +15,21 @@ FillBucket::FillBucket(const FillBucket::PossiblyEvaluatedLayoutProperties&,
                        const uint32_t /* overscaling */) {
     using namespace style;
     for (const auto& pair : layerPaintProperties) {
+        const auto& fillProps = static_cast<const FillLayerProperties&>(*pair.second);
+#if MLN_USE_FILL_ROUNDED_CORNER
+        const auto& roundedCornerProperty = fillProps.layerImpl().paint.get<FillRoundedCornerDistance>().value;
+        roundedCornerEnabled |= !roundedCornerProperty.isUndefined();
+#endif
         paintPropertyBinders.emplace(std::piecewise_construct,
                                      std::forward_as_tuple(pair.first),
-                                     std::forward_as_tuple(getEvaluated<FillLayerProperties>(pair.second), zoom));
+                                     std::forward_as_tuple(fillProps.evaluated, zoom));
     }
 }
 
 FillBucket::~FillBucket() {
     sharedVertices->release();
+    sharedNeighbors->release();
+    sharedTriangleInstances->release();
 }
 
 void FillBucket::recordSDFPattern(const std::string& layerID, const bool sdf) {
@@ -43,16 +50,31 @@ void FillBucket::generateBuffers(const GeometryCollection& geometry) {
 #if MLN_TRIANGULATE_FILL_OUTLINES
     gfx::generateFillAndOutineBuffers(geometry,
                                       vertices,
+                                      neighbors,
+                                      triangleInstances,
                                       triangles,
                                       triangleSegments,
+                                      roundedCornerEnabled,
                                       lineVertices,
                                       lineIndexes,
                                       lineSegments,
                                       basicLines,
                                       basicLineSegments);
 #else
-    gfx::generateFillAndOutineBuffers(geometry, vertices, triangles, triangleSegments, basicLines, basicLineSegments);
+    gfx::generateFillAndOutineBuffers(geometry,
+                                      vertices,
+                                      neighbors,
+                                      triangleInstances,
+                                      triangles,
+                                      triangleSegments,
+                                      roundedCornerEnabled,
+                                      basicLines,
+                                      basicLineSegments);
 #endif
+
+    if (roundedCornerEnabled && triangles.empty()) {
+        triangles.emplace_back(0, 1, 2);
+    }
 }
 
 void FillBucket::populateBinders(const GeometryTileFeature& feature,
@@ -92,6 +114,21 @@ void FillBucket::addFeature(const GeometryTileFeature& feature,
 
 void FillBucket::upload([[maybe_unused]] gfx::UploadPass& uploadPass) {
     uploaded = true;
+    // Layout is final: once these are in GPU buffers the CPU copies are dropped, unless the map
+    // reads them back to report rendered features.
+    if (retainFeaturesById) {
+        return;
+    }
+    sharedVertices->release();
+    sharedTriangles->release();
+    sharedBasicLineIndexes->release();
+#if MLN_TRIANGULATE_FILL_OUTLINES
+    sharedLineVertices->release();
+    sharedLineIndexes->release();
+#endif
+    for (auto& pair : paintPropertyBinders) {
+        pair.second.release();
+    }
 }
 
 bool FillBucket::hasData() const {

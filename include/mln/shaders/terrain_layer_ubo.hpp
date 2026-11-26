@@ -10,19 +10,22 @@ struct alignas(16) TerrainDrawableUBO {
     /*  0 */ std::array<float, 4 * 4> matrix;
     /* 64 */ std::array<float, 4> dem_coords; // scale, x offset, y offset into the bound DEM
                                               // tile ({1,0,0,0} unless an ancestor is bound)
-    /* 80 */
+    /* 80 */ float skirt_edges;               // edges with a neighbor tile: north 1, east 2, south 4, west 8
+    /* 84 */ float pad1;
+    /* 88 */ float pad2;
+    /* 92 */ float pad3;
+    /* 96 */
 };
-static_assert(sizeof(TerrainDrawableUBO) == 5 * 16);
+static_assert(sizeof(TerrainDrawableUBO) == 6 * 16);
 
 // One entry per instance of the instanced GL terrain depth pass. The whole array is bound as
 // the TerrainDrawableUBO block and indexed by gl_InstanceID in terrain_depth.vertex. Kept
-// separate from TerrainDrawableUBO so the shared struct (and the mtl/vulkan/webgpu layouts
-// mirroring it) stay untouched. std140: mat4 then two vec4s -> 6*16 bytes.
+// separate from TerrainDrawableUBO for the DEM array layer. std140: mat4 then two vec4s -> 6*16 bytes.
 struct alignas(16) TerrainDepthInstanceUBO {
     /*  0 */ std::array<float, 4 * 4> matrix;
     /* 64 */ std::array<float, 4> dem_coords; // scale, x offset, y offset, dem_dim (in .w)
     /* 80 */ float dem_layer;                 // sampler2DArray layer of this tile's DEM
-    /* 84 */ float pad1;
+    /* 84 */ float skirt_edges;               // as in TerrainDrawableUBO
     /* 88 */ float pad2;
     /* 92 */ float pad3;
     /* 96 */
@@ -42,19 +45,28 @@ struct alignas(16) TerrainEvaluatedPropsUBO {
     /*  0 */ std::array<float, 4> unpack; // DEM unpack vector for the source's encoding
     /* 16 */ float exaggeration;
     /* 20 */ float elevation_offset;
-    // Sky fog blended into the drape, as maplibre-gl-js terrain.fragment does. The near and far
-    // planes give the fog depth (see TransformState::getFogDepthRange); an opacity of 0 is no fog.
-    /* 24 */ float fog_near = 0.0f;
-    /* 28 */ float fog_far = 1.0f;
-    /* 32 */ Color fog_color = Color::white();
-    /* 48 */ Color horizon_color = Color::white();
-    /* 64 */ float fog_ground_blend = 1.0f;
-    /* 68 */ float horizon_fog_blend = 1.0f;
-    /* 72 */ float fog_ground_blend_opacity = 0.0f;
-    /* 76 */ float pad1 = 0.0f;
-    /* 80 */
+    /* 24 */ float pad1 = 0.0f;
+    /* 28 */ float pad2 = 0.0f;
+    /* 32 */ std::array<float, 4> haze_color = {0.0f, 0.0f, 0.0f, 0.0f}; // distance haze, premultiplied; clear when there is none
+    /* 48 */ std::array<float, 2> haze_ramp = {0.0f, 0.0f};  // haze = clamp(x - y / view depth, 0, 1)^2 (TerrainLayerTweaker)
+    /* 56 */ float pad3 = 0.0f;
+    /* 60 */ float pad4 = 0.0f;
+    // Sky fog blended into the drape, as maplibre-gl-js terrain.fragment does (Metal only). The near
+    // and far planes give the fog depth (see TransformState::getFogDepthRange); an opacity of 0 is no
+    // fog. After the haze so the GL/Vulkan/WebGPU blocks, which end at 64, keep their layout.
+    /* 64 */ float fog_near = 0.0f;
+    /* 68 */ float fog_far = 1.0f;
+    /* 72 */ float fog_ground_blend = 1.0f;
+    /* 76 */ float horizon_fog_blend = 1.0f;
+    /* 80 */ Color fog_color = Color::white();
+    /* 96 */ Color horizon_color = Color::white();
+    /* 112 */ float fog_ground_blend_opacity = 0.0f;
+    /* 116 */ float pad5 = 0.0f;
+    /* 120 */ float pad6 = 0.0f;
+    /* 124 */ float pad7 = 0.0f;
+    /* 128 */
 };
-static_assert(sizeof(TerrainEvaluatedPropsUBO) == 80);
+static_assert(sizeof(TerrainEvaluatedPropsUBO) == 128);
 
 } // namespace shaders
 } // namespace mln

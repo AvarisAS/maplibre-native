@@ -63,9 +63,8 @@ struct SymbolDrawableUBO {
     float opacity_t;
     float halo_width_t;
     float halo_blur_t;
-    float pad1;
-    float pad2;
-    float pad3;
+    float haze_alpha;
+    vec2 haze_ramp;
     // 3D terrain elevation
     vec4 dem_coords;
     vec4 dem_unpack;
@@ -212,7 +211,10 @@ void main() {
     frag_opacity = unpack_mix_float(dataInstanceVector.instance[instance].opacity, drawable.opacity_t) * fade_opacity;
 #endif
     // Fade out symbols hidden behind the terrain (see calculate_visibility)
-    frag_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled);
+    frag_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
+    // Over ground the distance haze has taken, the symbol goes with the ground
+    float haze = clamp(drawable.haze_ramp.x - drawable.haze_ramp.y / max(projectedPoint.w, 1e-6), 0.0, 1.0);
+    frag_opacity *= 1.0 - drawable.haze_alpha * haze * haze;
 }
 )";
 
@@ -319,9 +321,8 @@ struct SymbolDrawableUBO {
     float opacity_t;
     float halo_width_t;
     float halo_blur_t;
-    float pad1;
-    float pad2;
-    float pad3;
+    float haze_alpha;
+    vec2 haze_ramp;
     // 3D terrain elevation
     vec4 dem_coords;
     vec4 dem_unpack;
@@ -503,7 +504,10 @@ void main() {
     frag_tex = a_tex / drawable.texsize;
     frag_fade_opacity = max(0.0, min(1.0, raw_fade_opacity[0] + fade_change));
     // Fade out symbols hidden behind the terrain (see calculate_visibility)
-    frag_fade_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled);
+    frag_fade_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
+    // Over ground the distance haze has taken, the symbol goes with the ground
+    float haze = clamp(drawable.haze_ramp.x - drawable.haze_ramp.y / max(projectedPoint.w, 1e-6), 0.0, 1.0);
+    frag_fade_opacity *= 1.0 - drawable.haze_alpha * haze * haze;
     frag_font_scale = fontScale;
     frag_gamma_scale = gl_Position.w;
 
@@ -693,9 +697,8 @@ struct SymbolDrawableUBO {
     float opacity_t;
     float halo_width_t;
     float halo_blur_t;
-    float pad1;
-    float pad2;
-    float pad3;
+    float haze_alpha;
+    vec2 haze_ramp;
     // 3D terrain elevation
     vec4 dem_coords;
     vec4 dem_unpack;
@@ -882,7 +885,10 @@ void main() {
 	frag_tex = a_tex / (is_icon ? drawable.texsize_icon : drawable.texsize);
     frag_fade_opacity = max(0.0, min(1.0, raw_fade_opacity[0] + fade_change));
     // Fade out symbols hidden behind the terrain (see calculate_visibility)
-    frag_fade_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled);
+    frag_fade_opacity *= calculate_visibility(surface_transformed(projectedPoint), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
+    // Over ground the distance haze has taken, the symbol goes with the ground
+    float haze = clamp(drawable.haze_ramp.x - drawable.haze_ramp.y / max(projectedPoint.w, 1e-6), 0.0, 1.0);
+    frag_fade_opacity *= 1.0 - drawable.haze_alpha * haze * haze;
     frag_font_scale = fontScale;
     frag_gamma_scale = gl_Position.w;
 

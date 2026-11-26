@@ -32,10 +32,11 @@ public:
         // targets, hillshade prepare) no longer wait; without this, a continuous-mode headless map
         // committed frames faster than the GPU finished them until the queue stalled
         // (Map.PrefetchTiles).
-        const MTLCommandBufferPtr frame = offscreenTexture->getResource<RenderableResource>().getCommandBuffer();
-        offscreenTexture->getResource<RenderableResource>().swap();
-        if (frame) {
-            frame->waitUntilCompleted();
+        auto& resource = offscreenTexture->getResource<RenderableResource>();
+        const MTLCommandBufferPtr commandBuffer = resource.getCommandBuffer();
+        resource.swap();
+        if (commandBuffer) {
+            commandBuffer->waitUntilCompleted();
         }
     }
 

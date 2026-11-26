@@ -6,56 +6,58 @@
 NS_ASSUME_NONNULL_BEGIN
 
 /**
- ``MLNTerrain`` describes a style's 3D terrain configuration.
+ An ``MLNTerrain`` object describes the 3D terrain of a style: the raster-dem
+ source that supplies the elevation data, and a vertical exaggeration. It is the
+ counterpart of the `terrain` object of the
+ <a href="https://maplibre.org/maplibre-style-spec/terrain/">style specification</a>.
 
- Terrain drapes the map over the elevation data of a raster-dem source. Per the
- <a href="https://maplibre.org/maplibre-style-spec/terrain/">style specification</a>,
- `exaggeration` is a vertical multiplier where `1.0` renders true-scale elevation.
+ To drape the map over the elevation data, set ``MLNStyle/terrain``. To make the
+ map flat again, set it to `nil`. Terrain objects are immutable. To change the
+ exaggeration, set a new object.
 
- It is recommended to give terrain its own raster-dem source, even when it uses the
- same tiles as a hillshade source, so styles stay portable with maplibre-gl-js, which
- keeps a separate terrain source cache.
-
- To enable terrain, set ``MLNStyle/terrain`` to an ``MLNTerrain`` object, or use the
- ``MLNMapView/setTerrainWithSourceIdentifier:exaggeration:`` convenience method.
+ It is recommended to give terrain its own ``MLNRasterDEMSource``, even when it
+ uses the same tiles as a hillshade layer, so styles stay portable with
+ MapLibre GL JS, which keeps a separate terrain source cache.
  */
 MLN_EXPORT
 @interface MLNTerrain : NSObject <NSCopying>
 
 /**
- The identifier of the raster-dem source that supplies the elevation data.
+ The identifier of the ``MLNRasterDEMSource`` that supplies the elevation data.
  */
 @property (nonatomic, copy, readonly) NSString *sourceIdentifier;
 
 /**
  The vertical exaggeration multiplier applied to the elevation data.
 
- A value of `1.0` (the default) renders true-scale elevation. Larger values make the
- terrain more dramatic; smaller values flatten it.
+ A value of `1` renders true-scale elevation, larger values make the relief more
+ pronounced, and `0` flattens it. The value is stored with the precision of the
+ `float` the renderer uses, so a terrain read back from ``MLNStyle/terrain``
+ equals the one that was set.
  */
 @property (nonatomic, readonly) CGFloat exaggeration;
 
 /**
- Returns a terrain object with the given source identifier and exaggeration.
+ Returns a terrain object that uses the given source and exaggeration.
 
- @param sourceIdentifier The identifier of the raster-dem source that supplies the
-    elevation data.
- @param exaggeration The vertical exaggeration multiplier to apply to the elevation
-    data.
+ @param sourceIdentifier The identifier of the ``MLNRasterDEMSource`` that
+    supplies the elevation data.
+ @param exaggeration The vertical exaggeration multiplier.
  */
 - (instancetype)initWithSourceIdentifier:(NSString *)sourceIdentifier
                             exaggeration:(CGFloat)exaggeration NS_DESIGNATED_INITIALIZER;
 
 /**
- Returns a terrain object with the given source identifier and the default
- exaggeration of `1.0`.
+ Returns a terrain object that uses the given source at true scale, an
+ exaggeration of `1`.
 
- @param sourceIdentifier The identifier of the raster-dem source that supplies the
-    elevation data.
+ @param sourceIdentifier The identifier of the ``MLNRasterDEMSource`` that
+    supplies the elevation data.
  */
 - (instancetype)initWithSourceIdentifier:(NSString *)sourceIdentifier;
 
 - (instancetype)init NS_UNAVAILABLE;
++ (instancetype)new NS_UNAVAILABLE;
 
 @end
 

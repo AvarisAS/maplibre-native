@@ -71,6 +71,10 @@ public:
         delegate.invoke(&RendererObserver::onTerrainMinElevationChanged, elevationMeters);
     }
 
+    void onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex> index) override {
+        delegate.invoke(&RendererObserver::onTerrainElevationIndexChanged, std::move(index));
+    }
+
     void onTerrainEyeElevationChanged(double elevationMeters) override {
         delegate.invoke(&RendererObserver::onTerrainEyeElevationChanged, elevationMeters);
     }

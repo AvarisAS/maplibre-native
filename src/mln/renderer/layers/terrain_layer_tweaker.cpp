@@ -2,6 +2,7 @@
 
 #include <mln/gfx/context.hpp>
 #include <mln/gfx/drawable.hpp>
+#include <mln/math/angles.hpp>
 #include <mln/renderer/layer_group.hpp>
 #include <mln/renderer/paint_parameters.hpp>
 #include <mln/renderer/render_terrain.hpp>
@@ -44,11 +45,19 @@ void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamet
     const auto zoom = std::max(parameters.state.getZoom(), 0.0);
     const float elevationOffset = static_cast<float>(util::M2PI * util::EARTH_RADIUS_M / std::pow(2.0, zoom) / 5.0);
 
+    const RenderTerrain::Haze haze = terrain->getHaze(parameters.state);
+
     // Populate layer-level UBO with terrain properties
     auto& layerUniforms = layerGroup.mutableUniformBuffers();
     TerrainEvaluatedPropsUBO propsUBO = {.unpack = terrain->getDEMUnpackVector(),
                                          .exaggeration = exaggeration,
-                                         .elevation_offset = elevationOffset};
+                                         .elevation_offset = elevationOffset,
+                                         .pad1 = 0.0f,
+                                         .pad2 = 0.0f,
+                                         .haze_color = {haze.color.r, haze.color.g, haze.color.b, haze.color.a},
+                                         .haze_ramp = haze.ramp,
+                                         .pad3 = 0.0f,
+                                         .pad4 = 0.0f};
     if (parameters.sky) {
         const auto& sky = *parameters.sky;
         const auto range = parameters.state.getFogDepthRange();
@@ -106,7 +115,11 @@ void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamet
         const TerrainDrawableUBO drawableUBO = {
 #endif
             .matrix = util::cast<float>(matrix),
-            .dem_coords = terrain->getDrawableDemCoords(*drawable.getTileID())
+            .dem_coords = terrain->getDrawableDemCoords(*drawable.getTileID()),
+            .skirt_edges = terrain->getDrawableSkirtEdges(*drawable.getTileID()),
+            .pad1 = 0.0f,
+            .pad2 = 0.0f,
+            .pad3 = 0.0f
         };
 
 #if !MLN_UBO_CONSOLIDATION

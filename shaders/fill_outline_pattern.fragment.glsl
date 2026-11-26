@@ -10,15 +10,19 @@ layout (std140) uniform FillEvaluatedPropsUBO {
     highp vec4 u_color;
     highp vec4 u_outline_color;
     highp float u_opacity;
+    highp float u_rounded_corner_distance;
     highp float u_fade;
     highp float u_from_scale;
     highp float u_to_scale;
+    lowp float props_pad1;
+    lowp float props_pad2;
+    lowp float props_pad3;
 };
 
 uniform sampler2D u_image;
 
-in vec2 v_pos_a;
-in vec2 v_pos_b;
+in highp vec2 v_pos_a;
+in highp vec2 v_pos_b;
 in vec2 v_pos;
 
 #pragma mapbox: define highp vec4 color

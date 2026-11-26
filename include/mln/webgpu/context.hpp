@@ -4,6 +4,8 @@
 #include <mln/gfx/vertex_buffer.hpp>
 #include <mln/webgpu/renderer_backend.hpp>
 #include <mln/webgpu/buffer_resource.hpp>
+#include <mln/webgpu/buffer_uploader.hpp>
+#include <map>
 #include <memory>
 #include <optional>
 #include <vector>
@@ -104,11 +106,17 @@ public:
     /// so an unbound (optional) texture slot must still receive a valid texture
     /// and sampler. Mirrors the Vulkan backend's getDummyTexture().
     const std::shared_ptr<Texture2D>& getDummyTexture();
+    /// A shared vertex buffer of at least `size` bytes holding the default value of `type`,
+    /// for attributes a drawable doesn't provide
+    const VertexBufferResource& getDefaultVertexBuffer(gfx::AttributeDataType type, std::size_t size);
 
     // Tile clipping mask rendering
     bool renderTileClippingMasks(gfx::RenderPass& renderPass,
                                  RenderStaticData& staticData,
                                  const std::vector<shaders::ClipUBO>& tileUBOs);
+
+    /// Buffer writes go through here so that a frame's writes are uploaded together
+    BufferUploader& getBufferUploader() { return bufferUploader; }
 
     // Command encoder tracking
     class CommandEncoder* getCurrentCommandEncoder() const { return currentCommandEncoder; }
@@ -123,7 +131,7 @@ public:
                                                          const gfx::VertexAttributeArray& overrides,
                                                          gfx::BufferUsageType,
                                                          const std::optional<std::chrono::duration<double>>&,
-                                                         std::shared_ptr<webgpu::VertexBufferResource>&) noexcept;
+                                                         std::shared_ptr<webgpu::VertexBufferResource>&);
 
 protected:
     std::unique_ptr<gfx::RenderbufferResource> createRenderbufferResource(gfx::RenderbufferPixelType, Size) override;
@@ -133,6 +141,7 @@ private:
     RendererBackend& backend;
     std::unique_ptr<gfx::UniformBufferArray> globalUniformBuffers;
     class CommandEncoder* currentCommandEncoder = nullptr;
+    BufferUploader bufferUploader;
 
     // Cached buffers (aligned with Metal)
     std::optional<BufferResource> tileVertexBuffer;
@@ -140,13 +149,20 @@ private:
 
     // Fallback texture for shader-declared but unbound texture slots
     std::shared_ptr<Texture2D> dummyTexture;
+    // Default attribute buffers by type, largest last. Bindings may still point at the smaller ones.
+    std::map<gfx::AttributeDataType, std::vector<std::unique_ptr<VertexBufferResource>>> defaultVertexBuffers;
 
     // Cached clipping resources
     gfx::ShaderProgramBasePtr clipMaskShader;
     const gfx::Renderable* clipMaskRenderable = nullptr;
     std::optional<std::size_t> clipMaskPipelineHash;
-    std::vector<BufferResource> clipMaskUniformBuffers;
-    std::vector<WGPUBindGroup> clipMaskActiveBindGroups;
+    // One uniform slot and bind group per tile, reused across frames
+    std::optional<BufferResource> clipMaskUniformBuffer;
+    std::vector<WGPUBindGroup> clipMaskBindGroups;
+    WGPUBindGroupLayout clipMaskBindGroupLayout = nullptr;
+    std::size_t clipMaskSlotsUsed = 0;
+
+    void releaseClipMaskBindGroups();
 };
 
 } // namespace webgpu

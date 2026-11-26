@@ -212,9 +212,17 @@ public:
     std::set<CanonicalTileID> demTiles;
 };
 
+// A source that covers all the ground in view, which is what the cap holds
+class CoveringAllTheGround {
+public:
+    CoveringAllTheGround() { RenderTerrain::setSourcesEndBelowMinZoomForTesting(false); }
+    ~CoveringAllTheGround() { RenderTerrain::setSourcesEndBelowMinZoomForTesting(true); }
+};
+
 // The source asks for the tiles nearest the camera and no others: the same set as the nearest
 // of the whole cover, measured from where the camera stands on the ground.
 void expectOnlyTheTilesNearestTheCamera(const TerrainSourceCoverTest::Options& options) {
+    const CoveringAllTheGround use;
     TerrainSourceCoverTest test(options);
     // The DEM arrives first: the elevated cover shifts as it lands, and a source that asked for
     // the tiles on each side of that shift has asked for more than its cap in all.
@@ -248,6 +256,28 @@ TEST(TerrainSourceCover, TheCapFollowsTheTerrainLoadMode) {
     expectOnlyTheTilesNearestTheCamera({.mode = TerrainLoadMode::Performance});
 }
 
+// A little past the pitch threshold with the map at the source's min zoom, all the ground in view
+// is within the source's reach, and it asks for what it did without the rule: 16 tiles on a phone's
+// screen. With a reach of one zoom it asked for 13, the farthest three left out in view.
+TEST(TerrainSourceCover, ASourceAtItsMinZoomKeepsItsCoverAtPitch65) {
+    const TerrainSourceCoverTest::Options options{
+        .mode = TerrainLoadMode::Balanced, .pitch = 65.0, .zoom = 13.0, .size = {393, 852}};
+    const auto parcelsAskedFor = [&] {
+        TerrainSourceCoverTest test(options);
+        test.settleDEM();
+        test.showParcels();
+        test.render(10);
+        return test.parcelTiles;
+    };
+    std::set<CanonicalTileID> whole;
+    {
+        const CoveringAllTheGround use;
+        whole = parcelsAskedFor();
+    }
+    ASSERT_GT(whole.size(), 8u);
+    EXPECT_EQ(parcelsAskedFor(), whole);
+}
+
 // The terrain draws from its DEM source, so the DEM keeps its own cover rather than the cap.
 // Here the DEM is as deep as the vector source, so its cover holds far more tiles than the cap
 // allows. A capped DEM would stay within a few tiles of the limit: the tiles it asks for before
@@ -271,4 +301,26 @@ TEST(TerrainSourceCover, ASourceKeepsItsWholeCoverWithoutTerrain) {
     test.nearestCover(test.cameraGround(), 0, coverSize, false);
     ASSERT_GT(coverSize, test.sourceTileLimit()) << "the view has to cover more than the cap would allow";
     EXPECT_EQ(test.parcelTiles.size(), coverSize);
+}
+
+// A wide pitched view draws many terrain tiles, but their topology is identical.
+// Account for small non-terrain index buffers while rejecting one mesh buffer per tile/pass.
+TEST(TerrainSourceCover, MetalTerrainUploadsOneIndexBufferAcrossTilesAndCameraChanges) {
+#if !MLN_RENDER_BACKEND_METAL
+    GTEST_SKIP() << "Checks Metal index-buffer accounting";
+#else
+    TerrainSourceCoverTest test({.demMaxZoom = 12, .pitch = 60.0, .zoom = 12.0, .size = {512, 512}});
+    constexpr int meshBytes = 6 * (128 * 128 + 4 * 128) * sizeof(uint16_t);
+    test.settleDEM();
+    const auto before = test.frontend.render(test.map).stats;
+    ASSERT_GE(before.numTerrainTiles, 3) << "the memory bound requires multiple terrain tiles";
+    EXPECT_GE(before.memIndexBuffers, meshBytes);
+    EXPECT_LT(before.memIndexBuffers, 2 * meshBytes);
+    test.map.jumpTo(CameraOptions().withCenter(LatLng{38.28, -120.66}).withZoom(13.0).withPitch(60.0));
+    test.settleDEM();
+    const auto after = test.frontend.render(test.map).stats;
+    ASSERT_GE(after.numTerrainTiles, 3) << "the moved camera must still draw multiple terrain tiles";
+    EXPECT_GE(after.memIndexBuffers, meshBytes);
+    EXPECT_LT(after.memIndexBuffers, 2 * meshBytes);
+#endif
 }
