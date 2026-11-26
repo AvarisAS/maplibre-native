@@ -152,6 +152,19 @@ TEST(TerrainSeaLevel, LandHidesWhatIsAtSeaLevel) {
     }
 }
 
+// Low land (1, 2 and 5 m) must hide the sea-level shape too: a constant depth bias that
+// grows with distance pulls the shape toward the camera and lets it climb over the hills.
+TEST(TerrainSeaLevel, LowLandHidesWhatIsAtSeaLevel) {
+    for (const std::string kind : {"fill", "line", "circle"}) {
+        for (const double ground : {1.0, 2.0, 5.0}) {
+            const int groundPixels = redPixels(kind, "ground", ground);
+            const int sea = redPixels(kind, "sea", ground);
+            EXPECT_GT(groundPixels, 300) << kind << " on " << ground << " m ground shows";
+            EXPECT_LT(sea, groundPixels / 50) << kind << " at sea level under " << ground << " m land is hidden";
+        }
+    }
+}
+
 // Over a seabed at -100 m a sea-level shape stands above the ground and shows.
 TEST(TerrainSeaLevel, ASeaLevelShapeShowsOverTheSeabed) {
     for (const std::string kind : {"fill", "line", "circle"}) {
