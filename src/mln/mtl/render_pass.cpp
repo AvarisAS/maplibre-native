@@ -30,6 +30,16 @@ RenderPass::RenderPass(CommandEncoder& commandEncoder_, const char* name, const 
                     }
                 }
             }
+            // The depth buffer's clear value follows the descriptor: 0 with a reversed depth
+            // (PaintParameters::reversedDepth), where the far plane is 0 and nearer is greater.
+            if (descriptor.clearDepth && rpd->depthAttachment() && rpd->depthAttachment()->texture() &&
+                rpd->depthAttachment()->loadAction() == MTL::LoadActionClear &&
+                rpd->depthAttachment()->clearDepth() != static_cast<double>(*descriptor.clearDepth)) {
+                if (auto copy = NS::TransferPtr(rpd->copy())) {
+                    copy->depthAttachment()->setClearDepth(*descriptor.clearDepth);
+                    rpd = std::move(copy);
+                }
+            }
             encoder = NS::RetainPtr(cmdBuff->renderCommandEncoder(rpd.get()));
 
             const auto& texture = rpd->colorAttachments()->object(0)->texture();

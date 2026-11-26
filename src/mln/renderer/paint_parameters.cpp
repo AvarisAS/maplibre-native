@@ -215,7 +215,9 @@ gfx::DepthMode PaintParameters::depthModeFor3D(gfx::DepthMaskType mask) const {
                           .mask = mask,
                           .range = {0.0, depthRangeSize}};
 #else
-    return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = mask};
+    return gfx::DepthMode{
+        .func = reversedDepth ? gfx::DepthFunctionType::GreaterEqual : gfx::DepthFunctionType::LessEqual,
+        .mask = mask};
 #endif
 }
 

@@ -21,7 +21,7 @@ namespace mln {
 
 using namespace shaders;
 
-void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParameters& parameters) {
+void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParameters& parameters, bool depthPass) {
     if (layerGroup.empty() || !terrain) {
         return;
     }
@@ -94,6 +94,11 @@ void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamet
         // matrices for the same reason. Monotonic, so skirt-vs-surface depth ordering and
         // the packed depth texture used for symbol occlusion are preserved; GL unchanged.
         matrix::remapClipZToUnitRange(matrix);
+        // Avaris: the main pass over terrain has a reversed depth buffer; the depth target that
+        // symbols read does not.
+        if (parameters.reversedDepth && !depthPass) {
+            matrix::reverseUnitClipZ(matrix);
+        }
 #endif
 
 #if !MLN_UBO_CONSOLIDATION
@@ -120,14 +125,14 @@ void TerrainLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamet
 
 #if MLN_UBO_CONSOLIDATION
     const size_t drawableUBOVectorSize = sizeof(TerrainDrawableUBO) * drawableUBOVector.size();
-    if (!drawableUniformBuffer || drawableUniformBuffer->getSize() < drawableUBOVectorSize) {
-        drawableUniformBuffer = context.createUniformBuffer(
-            drawableUBOVector.data(), drawableUBOVectorSize, false, true);
+    auto& buffer = depthPass ? depthDrawableUniformBuffer : drawableUniformBuffer;
+    if (!buffer || buffer->getSize() < drawableUBOVectorSize) {
+        buffer = context.createUniformBuffer(drawableUBOVector.data(), drawableUBOVectorSize, false, true);
     } else {
-        drawableUniformBuffer->update(drawableUBOVector.data(), drawableUBOVectorSize);
+        buffer->update(drawableUBOVector.data(), drawableUBOVectorSize);
     }
 
-    layerUniforms.set(idTerrainDrawableUBO, drawableUniformBuffer);
+    layerUniforms.set(idTerrainDrawableUBO, buffer);
 #endif
 }
 

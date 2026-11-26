@@ -104,6 +104,7 @@ struct FragmentStage {
     float4 position [[position, invariant]];
     float2 extrude;
     float antialiasblur;
+    half visibility;
 
 #if !defined(HAS_UNIFORM_u_color)
     half4 color;
@@ -163,7 +164,20 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
                                     drawable.dem_unpack,
                                     drawable.dem_dim,
                                     drawable.dem_exaggeration,
-                                    drawable.dem_enabled);
+                                    drawable.dem_enabled == 1.0 ? 1.0 : 0.0);
+
+    // Avaris: a circle at sea level (`circle-elevation-reference: sea`, dem_enabled == 2) is a
+    // mark, as a symbol is: land in front of its centre hides the whole of it, and nothing else
+    // cuts it. Its quad faces the screen at the centre's depth, so a per-fragment depth test
+    // against the ground under it would take the lower half over shallow water and leave the
+    // upper half over low land. The texture bound in the DEM slot is then the terrain's packed
+    // depth, and the matrix a reversed [0, 1] clip z (z' = w - z): back to GL's z for the test.
+    float visibility = 1.0;
+    if (drawable.dem_enabled == 2.0) {
+        const float4 c = drawable.matrix * float4(circle_center, 0, 1);
+        visibility = calculate_visibility(float4(c.xy, c.w - 2.0 * c.z, c.w), demTexture, demSampler, 1.0,
+                                          paintParams.camera_to_center_distance);
+    }
 
     float4 position;
     if (props.pitch_with_map) {
@@ -196,6 +210,7 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
         .position       = position,
         .extrude        = extrude,
         .antialiasblur  = antialiasblur,
+        .visibility     = half(visibility),
 
 #if !defined(HAS_UNIFORM_u_color)
         .color          = half4(unpack_mix_color(vertx.color, drawable.color_t)),
@@ -269,7 +284,7 @@ half4 fragment fragmentMain(FragmentStage in [[stage_in]],
     const float color_t = (stroke_width < 0.01) ? 0.0 :
         smoothstep(antialiased_blur, 0.0, extrude_length - radius / (radius + stroke_width));
 
-    return half4(opacity_t * mix(color * opacity, stroke_color * stroke_opacity, color_t));
+    return half4(in.visibility * opacity_t * mix(color * opacity, stroke_color * stroke_opacity, color_t));
 }
 )";
 };

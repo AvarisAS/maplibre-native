@@ -97,7 +97,13 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
         if (terrainEnabled && !layerGroup.isSeaLevel()) {
             terrainData = parameters.terrain->getTerrainData(tileID);
         }
-        if (parameters.terrain) {
+        // Avaris: on a reversed depth buffer (Metal) a sea-level circle is tested as a symbol is,
+        // once, at its centre, against the terrain's packed depth, bound in the DEM slot it has
+        // no other use for; the shader reads dem_enabled == 2 (mtl/circle.hpp).
+        const bool seaCentreTest = terrainEnabled && layerGroup.isSeaLevel() && parameters.reversedDepth;
+        if (seaCentreTest) {
+            drawable.setTexture(parameters.terrain->getDepthTexture(context), idCircleDEMTexture);
+        } else if (parameters.terrain) {
             drawable.setTexture(
                 terrainData ? terrainData->demTexture : parameters.terrain->getPlaceholderDEMTexture(context),
                 idCircleDEMTexture);
@@ -138,7 +144,7 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
                                              : std::array<float, 4>{{0, 0, 0, 0}},
             .dem_dim = terrainData ? terrainData->demDim : 0.0f,
             .dem_exaggeration = parameters.terrain ? parameters.terrain->getExaggeration() : 0.0f,
-            .dem_enabled = terrainData ? 1.0f : 0.0f,
+            .dem_enabled = seaCentreTest ? 2.0f : terrainData ? 1.0f : 0.0f,
             .pad4 = 0
         };
 #if MLN_UBO_CONSOLIDATION

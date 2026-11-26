@@ -41,6 +41,8 @@ protected:
     // it or the encoder default applies - depth test Always, write off.
     std::optional<MTLDepthStencilStatePtr> stateNone;
     std::optional<MTLDepthStencilStatePtr> stateDepth;
+    /// Avaris: the depth sense `stateDepth` was built for (PaintParameters::reversedDepth).
+    bool stateDepthReversed = false;
 };
 
 } // namespace mtl
