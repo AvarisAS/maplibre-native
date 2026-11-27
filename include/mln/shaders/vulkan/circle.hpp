@@ -190,6 +190,13 @@ void main() {
         centre.z = centre.w - 2.0 * centre.z;
     }
     frag_visibility = calculate_visibility(surface_transformed(centre), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
+    // Avaris: land under the centre is read from the DEM (as mtl/circle.hpp). The packed depth
+    // alone never hid a circle at 0 m under a few metres of land; a ramp over the first metre keeps
+    // a circle at a quay edge from popping. dem_dim is 0 when the tile has no DEM.
+    if (drawable.depth_enabled == 2.0 && drawable.dem_dim > 0.0) {
+        const float land = get_elevation(circle_center, dem_sampler, drawable.dem_coords, drawable.dem_unpack, drawable.dem_dim, 1.0, 1.0);
+        frag_visibility *= clamp(1.0 - land / 1.0, 0.0, 1.0);
+    }
 
     // This is a minimum blur distance that serves as a faux-antialiasing for
     // the circle. since blur is a ratio of the circle's size and the intent is
