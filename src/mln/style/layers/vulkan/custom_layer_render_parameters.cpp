@@ -23,6 +23,7 @@ CustomLayerRenderParameters::CustomLayerRenderParameters(const mln::PaintParamet
     const auto& resource = renderable.getResource<mln::vulkan::RenderableResource>();
     renderPass = resource.getRenderPass().get();
     screenPreRotationRadiansClockwise = resource.getRotation();
+    reversedDepth = paintParameters.reversedDepth;
 }
 
 } // namespace vulkan

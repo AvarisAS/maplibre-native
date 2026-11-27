@@ -203,6 +203,19 @@ public class FillLayerTest extends BaseLayerTest {
 
   @Test
   @UiThreadTest
+  public void testFillElevationReferenceAsConstant() {
+    Timber.i("fill-elevation-reference");
+    assertNotNull(layer);
+    assertNull(layer.getFillElevationReference().getValue());
+
+    // Set and Get
+    String propertyValue = FILL_ELEVATION_REFERENCE_GROUND;
+    layer.setProperties(fillElevationReference(propertyValue));
+    assertEquals(layer.getFillElevationReference().getValue(), propertyValue);
+  }
+
+  @Test
+  @UiThreadTest
   public void testFillAntialiasAsConstant() {
     Timber.i("fill-antialias");
     assertNotNull(layer);

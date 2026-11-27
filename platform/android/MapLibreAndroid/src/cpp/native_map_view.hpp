@@ -292,6 +292,14 @@ public:
 
     jni::jfloat getTerrainExaggeration(JNIEnv&);
 
+    jni::Local<jni::String> setSkyProperties(JNIEnv&,
+                                             const jni::Array<jni::String>& names,
+                                             const jni::Array<jni::Object<>>& values);
+
+    void removeSky(JNIEnv&);
+
+    jni::jboolean hasSky(JNIEnv&);
+
     jni::Local<jni::Array<jni::Object<Layer>>> getLayers(JNIEnv&);
 
     jni::Local<jni::Object<Layer>> getLayer(JNIEnv&, const jni::String&);

@@ -16,6 +16,7 @@ import com.google.gson.JsonObject;
 import org.maplibre.android.MapLibre;
 import org.maplibre.android.constants.MapLibreConstants;
 import org.maplibre.android.log.Logger;
+import org.maplibre.android.style.expressions.Expression;
 import org.maplibre.android.style.layers.CannotAddLayerException;
 import org.maplibre.android.style.layers.Layer;
 import org.maplibre.android.style.layers.TransitionOptions;
@@ -754,6 +755,51 @@ public class Style {
   public Terrain getTerrain() {
     validateState("getTerrain");
     return nativeMap.getTerrain();
+  }
+
+  /**
+   * Set properties of the style's sky, creating the sky if the style has none.
+   * Every property is validated before any is applied, so a rejected property leaves the sky unchanged.
+   * Values are Java numbers, strings, booleans or {@link Expression}s.
+   *
+   * @param properties the sky property names and their values, for example {@code sky-color}
+   * @return true when all properties were applied, false when one was rejected (the reason is logged)
+   */
+  public boolean setSkyProperties(@NonNull Map<String, Object> properties) {
+    validateState("setSkyProperties");
+    String[] names = new String[properties.size()];
+    Object[] values = new Object[properties.size()];
+    int index = 0;
+    for (Map.Entry<String, Object> entry : properties.entrySet()) {
+      names[index] = entry.getKey();
+      Object value = entry.getValue();
+      values[index] = value instanceof Expression ? ((Expression) value).toArray() : value;
+      index++;
+    }
+    String error = nativeMap.setSkyProperties(names, values);
+    if (error != null) {
+      Logger.e(TAG, error);
+      return false;
+    }
+    return true;
+  }
+
+  /**
+   * Remove the style's sky. Does nothing when the style has no sky.
+   */
+  public void removeSky() {
+    validateState("removeSky");
+    nativeMap.removeSky();
+  }
+
+  /**
+   * Whether the style currently has a sky.
+   *
+   * @return true when a sky is set on the style
+   */
+  public boolean hasSky() {
+    validateState("hasSky");
+    return nativeMap.hasSky();
   }
 
   //

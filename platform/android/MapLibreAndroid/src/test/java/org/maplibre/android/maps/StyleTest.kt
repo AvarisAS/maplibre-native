@@ -337,6 +337,38 @@ class StyleTest : BaseTest() {
     }
 
     @Test
+    fun testSetSkyProperties() {
+        maplibreMap.setStyle(Style.Builder().fromUri(Style.getPredefinedStyle("Satellite Hybrid")))
+        maplibreMap.notifyStyleLoaded()
+        val style = maplibreMap.style!!
+        every { nativeMapView.setSkyProperties(any(), any()) } returns null
+        Assert.assertTrue(style.setSkyProperties(mapOf("sky-color" to "#88c6fc", "fog-ground-blend" to 0.5f)))
+        verify(exactly = 1) {
+            nativeMapView.setSkyProperties(
+                match { it.toList() == listOf("sky-color", "fog-ground-blend") },
+                any()
+            )
+        }
+    }
+
+    @Test
+    fun testSetSkyPropertiesRejected() {
+        maplibreMap.setStyle(Style.Builder().fromUri(Style.getPredefinedStyle("Satellite Hybrid")))
+        maplibreMap.notifyStyleLoaded()
+        val style = maplibreMap.style!!
+        every { nativeMapView.setSkyProperties(any(), any()) } returns "Sky property no-such-property: unknown"
+        Assert.assertFalse(style.setSkyProperties(mapOf("no-such-property" to 1f)))
+    }
+
+    @Test
+    fun testRemoveSky() {
+        maplibreMap.setStyle(Style.Builder().fromUri(Style.getPredefinedStyle("Satellite Hybrid")))
+        maplibreMap.notifyStyleLoaded()
+        maplibreMap.style!!.removeSky()
+        verify(exactly = 1) { nativeMapView.removeSky() }
+    }
+
+    @Test
     fun testAddDrawable() {
         val drawable = ShapeDrawable()
         drawable.intrinsicHeight = 10

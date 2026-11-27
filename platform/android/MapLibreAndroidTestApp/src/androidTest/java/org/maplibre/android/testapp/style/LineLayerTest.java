@@ -268,6 +268,19 @@ public class LineLayerTest extends BaseLayerTest {
 
   @Test
   @UiThreadTest
+  public void testLineElevationReferenceAsConstant() {
+    Timber.i("line-elevation-reference");
+    assertNotNull(layer);
+    assertNull(layer.getLineElevationReference().getValue());
+
+    // Set and Get
+    String propertyValue = LINE_ELEVATION_REFERENCE_GROUND;
+    layer.setProperties(lineElevationReference(propertyValue));
+    assertEquals(layer.getLineElevationReference().getValue(), propertyValue);
+  }
+
+  @Test
+  @UiThreadTest
   public void testLineOpacityTransition() {
     Timber.i("line-opacityTransitionOptions");
     assertNotNull(layer);

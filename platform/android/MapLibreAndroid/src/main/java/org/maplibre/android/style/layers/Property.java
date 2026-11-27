@@ -30,6 +30,27 @@ public final class Property {
   @Retention(RetentionPolicy.SOURCE)
   public @interface VISIBILITY {}
 
+  // FILL_ELEVATION_REFERENCE: The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+
+  /**
+   * On the terrain surface: draped, or lifted by the terrain elevation.
+   */
+  public static final String FILL_ELEVATION_REFERENCE_GROUND = "ground";
+  /**
+   * Flat at sea level (0 m), occluded by terrain above it.
+   */
+  public static final String FILL_ELEVATION_REFERENCE_SEA = "sea";
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   */
+  @StringDef({
+      FILL_ELEVATION_REFERENCE_GROUND,
+      FILL_ELEVATION_REFERENCE_SEA,
+    })
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface FILL_ELEVATION_REFERENCE {}
+
   // LINE_CAP: The display of line endings.
 
   /**
@@ -81,6 +102,27 @@ public final class Property {
     })
   @Retention(RetentionPolicy.SOURCE)
   public @interface LINE_JOIN {}
+
+  // LINE_ELEVATION_REFERENCE: The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+
+  /**
+   * On the terrain surface: draped, or lifted by the terrain elevation.
+   */
+  public static final String LINE_ELEVATION_REFERENCE_GROUND = "ground";
+  /**
+   * Flat at sea level (0 m), occluded by terrain above it.
+   */
+  public static final String LINE_ELEVATION_REFERENCE_SEA = "sea";
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   */
+  @StringDef({
+      LINE_ELEVATION_REFERENCE_GROUND,
+      LINE_ELEVATION_REFERENCE_SEA,
+    })
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface LINE_ELEVATION_REFERENCE {}
 
   // SYMBOL_PLACEMENT: Label placement relative to its geometry.
 
@@ -437,6 +479,48 @@ public final class Property {
     })
   @Retention(RetentionPolicy.SOURCE)
   public @interface TEXT_TRANSFORM {}
+
+  // SYMBOL_ELEVATION_REFERENCE: The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+
+  /**
+   * On the terrain surface: draped, or lifted by the terrain elevation.
+   */
+  public static final String SYMBOL_ELEVATION_REFERENCE_GROUND = "ground";
+  /**
+   * Flat at sea level (0 m), occluded by terrain above it.
+   */
+  public static final String SYMBOL_ELEVATION_REFERENCE_SEA = "sea";
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   */
+  @StringDef({
+      SYMBOL_ELEVATION_REFERENCE_GROUND,
+      SYMBOL_ELEVATION_REFERENCE_SEA,
+    })
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface SYMBOL_ELEVATION_REFERENCE {}
+
+  // CIRCLE_ELEVATION_REFERENCE: The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+
+  /**
+   * On the terrain surface: draped, or lifted by the terrain elevation.
+   */
+  public static final String CIRCLE_ELEVATION_REFERENCE_GROUND = "ground";
+  /**
+   * Flat at sea level (0 m), occluded by terrain above it.
+   */
+  public static final String CIRCLE_ELEVATION_REFERENCE_SEA = "sea";
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   */
+  @StringDef({
+      CIRCLE_ELEVATION_REFERENCE_GROUND,
+      CIRCLE_ELEVATION_REFERENCE_SEA,
+    })
+  @Retention(RetentionPolicy.SOURCE)
+  public @interface CIRCLE_ELEVATION_REFERENCE {}
 
   // FILL_TRANSLATE_ANCHOR: Controls the frame of reference for `fill-translate`.
 

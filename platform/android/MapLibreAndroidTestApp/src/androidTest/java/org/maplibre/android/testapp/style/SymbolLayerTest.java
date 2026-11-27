@@ -932,6 +932,19 @@ public class SymbolLayerTest extends BaseLayerTest {
 
   @Test
   @UiThreadTest
+  public void testSymbolElevationReferenceAsConstant() {
+    Timber.i("symbol-elevation-reference");
+    assertNotNull(layer);
+    assertNull(layer.getSymbolElevationReference().getValue());
+
+    // Set and Get
+    String propertyValue = SYMBOL_ELEVATION_REFERENCE_GROUND;
+    layer.setProperties(symbolElevationReference(propertyValue));
+    assertEquals(layer.getSymbolElevationReference().getValue(), propertyValue);
+  }
+
+  @Test
+  @UiThreadTest
   public void testIconOpacityTransition() {
     Timber.i("icon-opacityTransitionOptions");
     assertNotNull(layer);

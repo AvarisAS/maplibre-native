@@ -1384,6 +1384,31 @@ final class NativeMapView implements NativeMap {
   }
 
   @Override
+  @Nullable
+  public String setSkyProperties(@NonNull String[] names, @NonNull Object[] values) {
+    if (checkState("setSkyProperties")) {
+      return "map is destroyed";
+    }
+    return nativeSetSkyProperties(names, values);
+  }
+
+  @Override
+  public void removeSky() {
+    if (checkState("removeSky")) {
+      return;
+    }
+    nativeRemoveSky();
+  }
+
+  @Override
+  public boolean hasSky() {
+    if (checkState("hasSky")) {
+      return false;
+    }
+    return nativeHasSky();
+  }
+
+  @Override
   public float getPixelRatio() {
     return pixelRatio;
   }
@@ -2009,6 +2034,16 @@ final class NativeMapView implements NativeMap {
 
   @Keep
   private native float nativeGetTerrainExaggeration();
+
+  @Nullable
+  @Keep
+  private native String nativeSetSkyProperties(String[] names, Object[] values);
+
+  @Keep
+  private native void nativeRemoveSky();
+
+  @Keep
+  private native boolean nativeHasSky();
 
   @Keep
   private native void nativeSetPrefetchTiles(boolean enable);

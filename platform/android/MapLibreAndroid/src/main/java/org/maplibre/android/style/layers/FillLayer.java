@@ -156,6 +156,18 @@ public class FillLayer extends Layer {
   }
 
   /**
+   * Get the FillElevationReference property
+   *
+   * @return property wrapper value around String
+   */
+  @NonNull
+  @SuppressWarnings("unchecked")
+  public PropertyValue<String> getFillElevationReference() {
+    checkThread();
+    return (PropertyValue<String>) new PropertyValue("fill-elevation-reference", nativeGetFillElevationReference());
+  }
+
+  /**
    * Get the FillAntialias property
    *
    * @return property wrapper value around Boolean
@@ -393,6 +405,10 @@ public class FillLayer extends Layer {
   @NonNull
   @Keep
   private native Object nativeGetFillSortKey();
+
+  @NonNull
+  @Keep
+  private native Object nativeGetFillElevationReference();
 
   @NonNull
   @Keep

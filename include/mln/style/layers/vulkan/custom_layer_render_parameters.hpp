@@ -40,6 +40,9 @@ struct CustomLayerRenderParameters : mln::style::CustomLayerRenderParameters {
     /// @attention dFdx, dFdy in shaders also need adjustments if used.
     float screenPreRotationRadiansClockwise = 0.0f;
 
+    /// True when the pass's depth buffer is reversed; use GREATER_OR_EQUAL depth compare in pipelines.
+    bool reversedDepth = false;
+
     explicit CustomLayerRenderParameters(const PaintParameters&);
 };
 

@@ -8,6 +8,7 @@
 #include <mln/style/image.hpp>
 #include <mln/style/style.hpp>
 #include <mln/style/terrain.hpp>
+#include <mln/style/sky.hpp>
 #include <mln/util/action_journal.hpp>
 #include <mln/util/constants.hpp>
 #include <mln/util/event.hpp>
@@ -25,6 +26,8 @@
 // C++ -> Java conversion
 #include "conversion/collection.hpp"
 #include "style/conversion/filter.hpp"
+#include "style/android_conversion.hpp"
+#include "style/value.hpp"
 #include "geojson/feature.hpp"
 #include "gson/json_object.hpp"
 #include "rendering_stats.hpp"
@@ -1077,6 +1080,48 @@ jni::jfloat NativeMapView::getTerrainExaggeration(JNIEnv&) {
     return terrain ? terrain->getExaggeration() : 1.0f;
 }
 
+jni::Local<jni::String> NativeMapView::setSkyProperties(JNIEnv& env,
+                                                        const jni::Array<jni::String>& names,
+                                                        const jni::Array<jni::Object<>>& values) {
+    const jsize count = names.Length(env);
+    if (values.Length(env) != count) {
+        return jni::Make<jni::String>(env, "Sky properties: names and values differ in length");
+    }
+
+    // Validate every property against a scratch sky first, so a bad value changes nothing.
+    mln::style::Sky probe;
+    for (jsize i = 0; i < count; ++i) {
+        std::string name = jni::Make<std::string>(env, names.Get(env, i));
+        jni::Local<jni::Object<>> jvalue = values.Get(env, i);
+        std::optional<mln::style::conversion::Error> error = probe.setProperty(name, mln::android::Value(env, std::move(jvalue)));
+        if (error) {
+            return jni::Make<jni::String>(env, "Sky property " + name + ": " + error->message);
+        }
+    }
+
+    mln::style::Sky* sky = map->getStyle().getSky();
+    if (!sky) {
+        map->getStyle().setSky(std::make_unique<mln::style::Sky>());
+        sky = map->getStyle().getSky();
+    }
+    for (jsize i = 0; i < count; ++i) {
+        std::string name = jni::Make<std::string>(env, names.Get(env, i));
+        jni::Local<jni::Object<>> jvalue = values.Get(env, i);
+        sky->setProperty(name, mln::android::Value(env, std::move(jvalue)));
+    }
+    return jni::Local<jni::String>();
+}
+
+void NativeMapView::removeSky(JNIEnv&) {
+    if (map->getStyle().getSky()) {
+        map->getStyle().setSky(nullptr);
+    }
+}
+
+jni::jboolean NativeMapView::hasSky(JNIEnv&) {
+    return map->getStyle().getSky() != nullptr;
+}
+
 jni::Local<jni::Array<jni::Object<Layer>>> NativeMapView::getLayers(JNIEnv& env) {
     // Get the core layers
     std::vector<style::Layer*> layers = map->getStyle().getLayers();
@@ -1632,6 +1677,9 @@ void NativeMapView::registerNative(jni::JNIEnv& env) {
         METHOD(&NativeMapView::removeTerrain, "nativeRemoveTerrain"),
         METHOD(&NativeMapView::getTerrainSourceId, "nativeGetTerrainSourceId"),
         METHOD(&NativeMapView::getTerrainExaggeration, "nativeGetTerrainExaggeration"),
+        METHOD(&NativeMapView::setSkyProperties, "nativeSetSkyProperties"),
+        METHOD(&NativeMapView::removeSky, "nativeRemoveSky"),
+        METHOD(&NativeMapView::hasSky, "nativeHasSky"),
         METHOD(&NativeMapView::getLayers, "nativeGetLayers"),
         METHOD(&NativeMapView::getLayer, "nativeGetLayer"),
         METHOD(&NativeMapView::addLayer, "nativeAddLayer"),
