@@ -76,6 +76,11 @@ this fork can merge `main`.
 
 ## Release
 
+- **Avaris only.** Nothing from this fork is pushed, PR'd or run against `maplibre/maplibre-native`
+  (or any other remote). Contributing back happens only as a PR after talking to MapLibre members.
+  `gh` here defaults to upstream: always pass `-R AvarisAS/maplibre-native`. See MarineCatch
+  `docs/beslutninger/2026-11-27-motorgaffelen-er-avaris-sin.md`.
+
 - Version: `platform/ios/VERSION` says `7.0.0`; we publish `7.0.0-avaris.N`.
 - First release `7.0.0-avaris.1` was built by hand on macOS 27.2 / Xcode 27.2, using the same command
   as `.github/workflows/avaris-ios-release.yml`.
