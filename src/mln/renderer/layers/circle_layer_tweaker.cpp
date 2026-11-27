@@ -94,7 +94,12 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
         std::optional<RenderTerrain::TerrainData> terrainData;
         // Avaris: a sea-level circle (`circle-elevation-reference: sea`) stands at 0 m and is
         // depth-tested against the terrain instead (gfx::Drawable::getSeaLevel).
-        if (terrainEnabled && !layerGroup.isSeaLevel()) {
+        // Avaris: on a reversed depth buffer (Metal) a sea-level circle is tested as a symbol is,
+        // once, at its centre, against the terrain's packed depth (land in front of it) and the
+        // DEM (land under it, not lifted by it: dem_enabled stays 0); the shader reads
+        // depth_enabled == 2 (mtl/circle.hpp).
+        const bool seaCentreTest = terrainEnabled && layerGroup.isSeaLevel() && parameters.reversedDepth;
+        if (terrainEnabled && (!layerGroup.isSeaLevel() || seaCentreTest)) {
             terrainData = parameters.terrain->getTerrainData(tileID);
         }
         if (parameters.terrain) {
@@ -149,7 +154,7 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
                                              : std::array<float, 4>{{0, 0, 0, 0}},
             .dem_dim = terrainData ? terrainData->demDim : 0.0f,
             .dem_exaggeration = parameters.terrain ? parameters.terrain->getExaggeration() : 0.0f,
-            .dem_enabled = terrainData ? 1.0f : 0.0f,
+            .dem_enabled = (terrainData && !layerGroup.isSeaLevel()) ? 1.0f : 0.0f,
             .depth_enabled = depthEnabled
         };
 #if MLN_UBO_CONSOLIDATION
