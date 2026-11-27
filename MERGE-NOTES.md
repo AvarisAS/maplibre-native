@@ -266,3 +266,9 @@ Reversed depth composed with #4868's depth ranges:
   water, 3D boats behind the ridge and layer toggles match. Not covered on screen: the sky with
   terrain (no automated test either; `sky/basic` and `sky/zoom-expression` pass without terrain).
 - Decided 27.11.2026: circles not at sea level hide behind ridges (upstream behaviour); kept.
+
+## android-v13.8.0-avaris.1 (27.11.2026)
+
+- Bygget lokalt fra tag `android-v13.8.0-avaris.1` (9929ad59afc1): `./gradlew -Pmaplibre.abis=all :MapLibreAndroid:assembleVulkanRelease` med `VERSION` satt til `13.8.0-avaris.1`. Actions starter ingen kjøringer i gaffelen siden 26.11, så `avaris-android-release.yml` har ikke kjørt.
+- Distribuert som GitHub-release i gaffelen (offentlig, ingen token): AAR med arm64-v8a, armeabi-v7a, x86, x86_64 (sha256 `da9b9d88ee5d412a080463c4081e7e3fff9035b39fe20cc13e7f1fa1d1ba64df`) og POM. Ikke i GitHub Packages: Maven der krever token også for offentlige pakker.
+- Testet på telefon (Adreno, Vulkan) med AvarisSeaSurfaceActivity: vannflata, land foran vann, sjømerke på 0 m. Turistappen og HQ bygget mot motoren og installert til test.
