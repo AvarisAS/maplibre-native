@@ -1775,6 +1775,26 @@ The unit is in density-independent pixels only for SDF sprites that were created
   }
 
   /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<String> fillElevationReference(@Property.FILL_ELEVATION_REFERENCE String value) {
+    return new LayoutPropertyValue<>("fill-elevation-reference", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<Expression> fillElevationReference(Expression value) {
+    return new LayoutPropertyValue<>("fill-elevation-reference", value);
+  }
+
+  /**
    * The display of line endings.
    *
    * @param value a String value
@@ -1872,6 +1892,26 @@ The unit is in density-independent pixels only for SDF sprites that were created
    */
   public static PropertyValue<Expression> lineSortKey(Expression value) {
     return new LayoutPropertyValue<>("line-sort-key", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<String> lineElevationReference(@Property.LINE_ELEVATION_REFERENCE String value) {
+    return new LayoutPropertyValue<>("line-elevation-reference", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<Expression> lineElevationReference(Expression value) {
+    return new LayoutPropertyValue<>("line-elevation-reference", value);
   }
 
   /**
@@ -2783,6 +2823,26 @@ The unit is in density-independent pixels only for SDF sprites that were created
   }
 
   /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<String> symbolElevationReference(@Property.SYMBOL_ELEVATION_REFERENCE String value) {
+    return new LayoutPropertyValue<>("symbol-elevation-reference", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<Expression> symbolElevationReference(Expression value) {
+    return new LayoutPropertyValue<>("symbol-elevation-reference", value);
+  }
+
+  /**
    * Sorts features in ascending order based on this value. Features with a higher sort key will appear above features with a lower sort key.
    *
    * @param value a Float value
@@ -2800,6 +2860,26 @@ The unit is in density-independent pixels only for SDF sprites that were created
    */
   public static PropertyValue<Expression> circleSortKey(Expression value) {
     return new LayoutPropertyValue<>("circle-sort-key", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<String> circleElevationReference(@Property.CIRCLE_ELEVATION_REFERENCE String value) {
+    return new LayoutPropertyValue<>("circle-elevation-reference", value);
+  }
+
+  /**
+   * The surface the layer is placed on when 3D terrain is enabled. No effect without terrain.
+   *
+   * @param value a String value
+   * @return property wrapper around String
+   */
+  public static PropertyValue<Expression> circleElevationReference(Expression value) {
+    return new LayoutPropertyValue<>("circle-elevation-reference", value);
   }
 
   /**

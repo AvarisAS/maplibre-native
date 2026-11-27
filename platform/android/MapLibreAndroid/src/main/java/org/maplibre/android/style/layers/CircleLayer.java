@@ -156,6 +156,18 @@ public class CircleLayer extends Layer {
   }
 
   /**
+   * Get the CircleElevationReference property
+   *
+   * @return property wrapper value around String
+   */
+  @NonNull
+  @SuppressWarnings("unchecked")
+  public PropertyValue<String> getCircleElevationReference() {
+    checkThread();
+    return (PropertyValue<String>) new PropertyValue("circle-elevation-reference", nativeGetCircleElevationReference());
+  }
+
+  /**
    * Get the CircleRadius property
    *
    * @return property wrapper value around Float
@@ -492,6 +504,10 @@ public class CircleLayer extends Layer {
   @NonNull
   @Keep
   private native Object nativeGetCircleSortKey();
+
+  @NonNull
+  @Keep
+  private native Object nativeGetCircleElevationReference();
 
   @NonNull
   @Keep

@@ -662,6 +662,18 @@ public class SymbolLayer extends Layer {
   }
 
   /**
+   * Get the SymbolElevationReference property
+   *
+   * @return property wrapper value around String
+   */
+  @NonNull
+  @SuppressWarnings("unchecked")
+  public PropertyValue<String> getSymbolElevationReference() {
+    checkThread();
+    return (PropertyValue<String>) new PropertyValue("symbol-elevation-reference", nativeGetSymbolElevationReference());
+  }
+
+  /**
    * Get the IconOpacity property
    *
    * @return property wrapper value around Float
@@ -1320,6 +1332,10 @@ public class SymbolLayer extends Layer {
   @NonNull
   @Keep
   private native Object nativeGetSymbolScreenSpace();
+
+  @NonNull
+  @Keep
+  private native Object nativeGetSymbolElevationReference();
 
   @NonNull
   @Keep

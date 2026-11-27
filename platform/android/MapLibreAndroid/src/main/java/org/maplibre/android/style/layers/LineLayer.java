@@ -204,6 +204,18 @@ public class LineLayer extends Layer {
   }
 
   /**
+   * Get the LineElevationReference property
+   *
+   * @return property wrapper value around String
+   */
+  @NonNull
+  @SuppressWarnings("unchecked")
+  public PropertyValue<String> getLineElevationReference() {
+    checkThread();
+    return (PropertyValue<String>) new PropertyValue("line-elevation-reference", nativeGetLineElevationReference());
+  }
+
+  /**
    * Get the LineOpacity property
    *
    * @return property wrapper value around Float
@@ -577,6 +589,10 @@ public class LineLayer extends Layer {
   @NonNull
   @Keep
   private native Object nativeGetLineSortKey();
+
+  @NonNull
+  @Keep
+  private native Object nativeGetLineElevationReference();
 
   @NonNull
   @Keep

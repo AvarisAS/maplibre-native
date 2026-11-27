@@ -28,6 +28,8 @@ public:
 
     jni::Local<jni::Object<jni::ObjectTag>> getCircleSortKey(jni::JNIEnv&);
 
+    jni::Local<jni::Object<jni::ObjectTag>> getCircleElevationReference(jni::JNIEnv&);
+
     jni::Local<jni::Object<jni::ObjectTag>> getCircleRadius(jni::JNIEnv&);
     void setCircleRadiusTransition(jni::JNIEnv&, jlong duration, jlong delay);
     jni::Local<jni::Object<TransitionOptions>> getCircleRadiusTransition(jni::JNIEnv&);

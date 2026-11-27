@@ -7,6 +7,9 @@ import org.maplibre.android.constants.MapLibreConstants
 import org.maplibre.android.geometry.LatLng
 import org.maplibre.android.maps.MapView
 import org.maplibre.android.maps.Style
+import org.maplibre.android.style.layers.CircleLayer
+import org.maplibre.android.style.layers.FillLayer
+import org.maplibre.android.style.layers.Property
 import org.maplibre.android.testapp.R
 
 /**
@@ -39,7 +42,33 @@ class AvarisSeaSurfaceActivity : AppCompatActivity() {
                 .tilt(pitch)
                 .bearing(bearing)
                 .build()
-            map.setStyle(Style.Builder().fromJson(styleJson(terrain, sea, circles)))
+            map.setStyle(Style.Builder().fromJson(styleJson(terrain, sea, circles))) { style ->
+                (style.getLayer("sea-marks") as? CircleLayer)?.let { layer ->
+                    check(layer.circleElevationReference.value == Property.CIRCLE_ELEVATION_REFERENCE_SEA) {
+                        "sea-marks circle-elevation-reference is not sea"
+                    }
+                }
+                (style.getLayer("sea-surface") as? FillLayer)?.let { layer ->
+                    check(layer.fillElevationReference.value == Property.FILL_ELEVATION_REFERENCE_SEA) {
+                        "sea-surface fill-elevation-reference is not sea"
+                    }
+                }
+                check(
+                    style.setSkyProperties(
+                        mapOf(
+                            "sky-color" to "#88c6fc",
+                            "horizon-color" to "#ffffff",
+                            "fog-color" to "#ffffff",
+                            "fog-ground-blend" to 0.5f,
+                            "sky-horizon-blend" to 0.8f,
+                        )
+                    )
+                ) { "valid sky properties were rejected" }
+                check(style.hasSky()) { "style has no sky after setSkyProperties" }
+                check(!style.setSkyProperties(mapOf("no-such-property" to 1f))) {
+                    "unknown sky property was accepted"
+                }
+            }
         }
     }
 

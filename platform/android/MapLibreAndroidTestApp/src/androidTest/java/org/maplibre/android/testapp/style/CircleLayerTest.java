@@ -203,6 +203,19 @@ public class CircleLayerTest extends BaseLayerTest {
 
   @Test
   @UiThreadTest
+  public void testCircleElevationReferenceAsConstant() {
+    Timber.i("circle-elevation-reference");
+    assertNotNull(layer);
+    assertNull(layer.getCircleElevationReference().getValue());
+
+    // Set and Get
+    String propertyValue = CIRCLE_ELEVATION_REFERENCE_GROUND;
+    layer.setProperties(circleElevationReference(propertyValue));
+    assertEquals(layer.getCircleElevationReference().getValue(), propertyValue);
+  }
+
+  @Test
+  @UiThreadTest
   public void testCircleRadiusTransition() {
     Timber.i("circle-radiusTransitionOptions");
     assertNotNull(layer);

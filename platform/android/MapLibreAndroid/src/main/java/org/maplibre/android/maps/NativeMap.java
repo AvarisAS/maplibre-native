@@ -176,6 +176,18 @@ interface NativeMap {
   @Nullable
   Terrain getTerrain();
 
+  /**
+   * Sets sky properties on the style, creating the sky if absent.
+   *
+   * @return an error message if a property was rejected (nothing is changed), otherwise null
+   */
+  @Nullable
+  String setSkyProperties(@NonNull String[] names, @NonNull Object[] values);
+
+  void removeSky();
+
+  boolean hasSky();
+
   //
   // Content padding API
   //
