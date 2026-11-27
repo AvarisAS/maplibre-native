@@ -179,11 +179,22 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
     if (drawable.depth_enabled == 2.0) {
         centre.z = centre.w - 2.0 * centre.z;
     }
-    const float visibility = calculate_visibility(centre,
-                                                  depthTexture,
-                                                  depthSampler,
-                                                  drawable.depth_enabled,
-                                                  paintParams.units_to_pixels.y);
+    float visibility = calculate_visibility(centre,
+                                            depthTexture,
+                                            depthSampler,
+                                            drawable.depth_enabled,
+                                            paintParams.units_to_pixels.y);
+    // Avaris: land under the centre is read from the DEM. The packed depth comes from the
+    // offscreen pass with a ramp of a tenth of the view height and a self-occlusion bias of about
+    // 5 px, so a circle at 0 m under land a few metres high was never hidden by it. Land stands as
+    // measured and the seabed is below 0 m, so the centre is on land when the DEM there is above
+    // 0; a ramp over the first metre keeps a circle at a quay edge from popping. dem_dim is 0 when
+    // the circle's tile has no DEM: then only the depth test is left.
+    if (drawable.depth_enabled == 2.0 && drawable.dem_dim > 0.0) {
+        const float land = get_elevation(circle_center, demTexture, demSampler, drawable.dem_coords,
+                                         drawable.dem_unpack, drawable.dem_dim, 1.0, 1.0);
+        visibility *= clamp(1.0 - land / 1.0, 0.0, 1.0);
+    }
 
     float4 position;
     if (props.pitch_with_map) {

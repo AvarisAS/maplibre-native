@@ -74,7 +74,7 @@ std::string style(const std::string& kind, const std::string& reference) {
 })";
 }
 
-int redPixels(const std::string& kind, const std::string& reference, double groundMetres) {
+int redPixels(const std::string& kind, const std::string& reference, double groundMetres, double zoom = 13.0) {
     util::RunLoop loop;
     auto fileSource = std::make_shared<StubFileSource>(ResourceOptions::Default(), ClientOptions());
     const std::string dem = flatDEMTile(groundMetres);
@@ -89,7 +89,7 @@ int redPixels(const std::string& kind, const std::string& reference, double grou
                    fileSource,
                    MapOptions().withMapMode(MapMode::Static).withSize(frontend.getSize()));
     map.getStyle().loadJSON(style(kind, reference));
-    map.jumpTo(CameraOptions().withCenter(LatLng{46.0, 10.0}).withZoom(13.0).withPitch(20.0));
+    map.jumpTo(CameraOptions().withCenter(LatLng{46.0, 10.0}).withZoom(zoom).withPitch(20.0));
 
     PremultipliedImage image;
     for (int i = 0; i < 4; ++i) {
@@ -97,7 +97,8 @@ int redPixels(const std::string& kind, const std::string& reference, double grou
         image = frontend.render(map).image;
     }
     if (const char* dir = std::getenv("SEA_LEVEL_DUMP")) {
-        util::write_file(std::string(dir) + "/" + kind + "-" + reference + "-" + std::to_string(int(groundMetres)) + ".png",
+        util::write_file(std::string(dir) + "/" + kind + "-" + reference + "-" + std::to_string(int(groundMetres * 10)) + "-z" +
+                             std::to_string(int(zoom * 10)) + ".png",
                          encodePNG(image));
     }
     int red = 0;
@@ -170,9 +171,9 @@ TEST(TerrainSeaLevel, LowLandHidesWhatIsAtSeaLevel) {
 
 // A circle is a mark, tested once at its centre as a symbol is, so it is whole or hidden and
 // never cut. Tested per fragment (as it was) its screen-facing quad lost the lower half to a
-// shallow seabed and kept the upper half over low land: 526 of 973 pixels over 1 m ground. The
-// centre test has a symbol's tolerance, so ground a few metres over the centre does not hide it;
-// land in front does (LandHidesWhatIsAtSeaLevel).
+// shallow seabed and kept the upper half over low land: 526 of 973 pixels over 1 m ground. Land
+// under the centre is read from the DEM (ACircleCentredOnLowLandIsHidden), land in front of it
+// from the terrain's depth (LandHidesWhatIsAtSeaLevel).
 TEST(TerrainSeaLevel, ACircleAtSeaLevelIsWholeOrHidden) {
     const int whole = redPixels("circle", "sea", -100.0);
     EXPECT_GT(whole, 300);
@@ -384,4 +385,108 @@ TEST(TerrainSeaLevel, AnExtrusionIsHiddenByThePlateauInFrontOfIt) {
     EXPECT_GT(open, 100) << "an extrusion on flat ground shows";
     EXPECT_LT(extrusionPixels(2000.0, behind, "behind"), open / 50) << "the plateau in front of it hides it";
     EXPECT_GT(extrusionPixels(2000.0, inFront, "in-front"), 100) << "with the plateau behind it, it shows";
+}
+
+// A circle at the waterline: its centre on 0 m, a few DEM pixels south of a 5 m quay (the north
+// half of every DEM tile; z11 at z12 and z15), seen from the south, so the quay is behind it. It
+// shows, whole. The DEM starts at z0: a circle tile with no DEM tile falls back to the depth test
+// alone, which does not see low land under the centre.
+namespace {
+int circleAtPixels(const std::string& dem, double latitude, double zoom, const std::string& tag) {
+    util::RunLoop loop;
+    auto fileSource = std::make_shared<StubFileSource>(ResourceOptions::Default(), ClientOptions());
+    fileSource->tileResponse = [&](const Resource&) {
+        Response res;
+        res.data = std::make_shared<std::string>(dem);
+        return res;
+    };
+    HeadlessFrontend frontend{{256, 256}, 1};
+    MapAdapter map(frontend,
+                   MapObserver::nullObserver(),
+                   fileSource,
+                   MapOptions().withMapMode(MapMode::Static).withSize(frontend.getSize()));
+    map.getStyle().loadJSON(R"({
+  "version": 8,
+  "sources": {
+    "dem": {"type": "raster-dem", "tiles": ["http://example.com/dem/{z}-{x}-{y}.png"],
+            "encoding": "mapbox", "maxzoom": 11, "tileSize": 256},
+    "shape": {"type": "geojson", "maxzoom": 16, "data": {"type": "Feature", "properties": {},
+      "geometry": {"type": "Point", "coordinates": [10.0, )" +
+                            std::to_string(latitude) + R"(]}}}
+  },
+  "terrain": {"source": "dem", "exaggeration": 1.0},
+  "layers": [{"id": "bg", "type": "background", "paint": {"background-color": "white"}},
+             {"id": "x", "type": "circle", "source": "shape", "layout": {"circle-elevation-reference": "sea"},
+              "paint": {"circle-color": "red", "circle-radius": 12}}]
+})");
+    map.jumpTo(CameraOptions().withCenter(LatLng{latitude, 10.0}).withZoom(zoom).withPitch(20.0));
+    PremultipliedImage image;
+    for (int i = 0; i < 4; ++i) {
+        loop.runOnce();
+        image = frontend.render(map).image;
+    }
+    if (const char* dir = std::getenv("SEA_LEVEL_DUMP")) {
+        util::write_file(std::string(dir) + "/circle-at-" + tag + ".png", encodePNG(image));
+    }
+    int red = 0;
+    for (uint32_t i = 0; i < image.size.width * image.size.height; ++i) {
+        const uint8_t* px = image.data.get() + i * 4;
+        if (px[0] > 150 && px[1] < 90 && px[2] < 90) {
+            ++red;
+        }
+    }
+    return red;
+}
+} // namespace
+
+TEST(TerrainSeaLevel, ACircleAtTheWaterlineShows) {
+    // The middle of z11 row 731, where the 5 m half meets the 0 m half; 4 DEM pixels south of it.
+    const double edge = (tileEdgeLatitude(731) + tileEdgeLatitude(732)) / 2.0;
+    const double pixel = (tileEdgeLatitude(731) - tileEdgeLatitude(732)) / 256.0;
+    const double latitude = edge - 4.0 * pixel;
+    for (const double zoom : {9.5, 12.0, 15.0}) {
+        const std::string tag = "z" + std::to_string(int(zoom * 10));
+        const int open = circleAtPixels(flatDEMTile(0.0), latitude, zoom, "open-" + tag);
+        EXPECT_GT(open, 300) << tag;
+        EXPECT_EQ(open, circleAtPixels(stepDEMTile(5.0), latitude, zoom, "quay-" + tag)) << "at the waterline, " << tag;
+    }
+}
+
+// A circle whose centre is on land is hidden, however low the land. The centre test against the
+// terrain's packed depth (a symbol's, from the offscreen pass with the usual depth) has a ramp of
+// a tenth of the view height and a self-occlusion bias of about 5 px, so a circle at 0 m under
+// land a few metres high sat inside it: half shown at z12 and whole at z9.5 (Reine, Lofoten). The
+// DEM at the centre says it: land stands as measured and the seabed is below 0 m.
+TEST(TerrainSeaLevel, ACircleCentredOnLowLandIsHidden) {
+    for (const double zoom : {12.0, 15.0}) {
+        for (const double land : {1.0, 5.0}) {
+            EXPECT_EQ(0, circleAtPixels(flatDEMTile(land), 46.0, zoom, "land" + std::to_string(int(land)) + "-z" + std::to_string(int(zoom * 10)))) << "circle on " << land << " m land, z" << zoom;
+        }
+        const int whole = circleAtPixels(flatDEMTile(-100.0), 46.0, zoom, "deep-z" + std::to_string(int(zoom * 10)));
+        EXPECT_GT(whole, 300) << "z" << zoom;
+        for (const double seabed : {0.0, -0.1}) {
+            EXPECT_EQ(whole, circleAtPixels(flatDEMTile(seabed), 46.0, zoom, "seabed" + std::to_string(int(seabed * 10)) + "-z" + std::to_string(int(zoom * 10)))) << "circle on " << seabed << " m, z" << zoom;
+        }
+    }
+}
+
+// Known gap: at z9.5 the circle tiles are z9 while the DEM (tileSize 256) loads at z10, so the circle
+// tile is coarser than the DEM and has no DEM texture (upstream's DEM-texture rework, #4868):
+// getTerrainData finds no ancestor DEM, the DEM test at the centre is skipped, and a circle on low
+// land shows whole, as it did before the fix. The proper fix would keep an ancestor DEM in
+// RenderTerrain; that was deliberately deferred so as not to diverge from upstream in its most
+// active area, and it can come back only as an upstream contribution after a conversation with
+// MapLibre members. This test pins today's behaviour; when the gap closes, move z9.5 into
+// ACircleCentredOnLowLandIsHidden and delete this one.
+TEST(TerrainSeaLevel, ACircleOnLowLandAboveTheDemZoomIsAKnownGap) {
+    const double zoom = 9.5;
+    const int whole = circleAtPixels(flatDEMTile(-100.0), 46.0, zoom, "gap-deep-z95");
+    EXPECT_GT(whole, 300);
+    for (const double land : {1.0, 5.0}) {
+        EXPECT_EQ(whole, circleAtPixels(flatDEMTile(land), 46.0, zoom, "gap-land" + std::to_string(int(land)) + "-z95"))
+            << "circle on " << land << " m land at z9.5 (known gap: no DEM for a circle tile coarser than the DEM)";
+    }
+    for (const double seabed : {0.0, -0.1}) {
+        EXPECT_EQ(whole, circleAtPixels(flatDEMTile(seabed), 46.0, zoom, "gap-seabed" + std::to_string(int(seabed * 10)) + "-z95"));
+    }
 }
