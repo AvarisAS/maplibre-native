@@ -182,8 +182,14 @@ void main() {
 
     applySurfaceTransform();
 
-    // Hidden where the terrain covers the circle's centre, as maplibre-gl-js does (and as symbols are)
-    frag_visibility = calculate_visibility(surface_transformed(drawable.matrix * vec4(circle_center, ele, 1)), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
+    // Hidden where the terrain covers the circle's centre, as maplibre-gl-js does (and as symbols are).
+    // Avaris: depth_enabled == 2 is a sea-level circle whose matrix has a reversed [0, 1] clip z
+    // (z' = w - z); turned back to GL's z here, which is what the packed terrain depth holds.
+    vec4 centre = drawable.matrix * vec4(circle_center, ele, 1);
+    if (drawable.depth_enabled == 2.0) {
+        centre.z = centre.w - 2.0 * centre.z;
+    }
+    frag_visibility = calculate_visibility(surface_transformed(centre), depth_sampler, drawable.depth_enabled, paintParams.units_to_pixels.y);
 
     // This is a minimum blur distance that serves as a faux-antialiasing for
     // the circle. since blur is a ratio of the circle's size and the intent is

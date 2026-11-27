@@ -47,6 +47,9 @@ constexpr auto CaptureFrameCount = 1;
 #include <mln/gl/defines.hpp>
 #include <mln/gl/drawable_gl.hpp>
 #endif // !MLN_RENDER_BACKEND_METAL
+#if MLN_RENDER_BACKEND_VULKAN
+#include <mln/vulkan/renderable_resource.hpp>
+#endif // MLN_RENDER_BACKEND_VULKAN
 
 namespace mln {
 
@@ -255,6 +258,12 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
 #if MLN_RENDER_BACKEND_METAL
     // Avaris: with terrain the main pass has a reversed depth buffer (PaintParameters::reversedDepth).
     parameters.reversedDepth = parameters.terrain != nullptr;
+#elif MLN_RENDER_BACKEND_VULKAN
+    // Avaris: the same on Vulkan, where the surface has a float depth buffer; without one the
+    // pass keeps the usual depth (vulkan::RenderableResource::supportsReversedDepth).
+    parameters.reversedDepth =
+        parameters.terrain != nullptr &&
+        parameters.backend.getDefaultRenderable().getResource<vulkan::RenderableResource>().supportsReversedDepth();
 #endif
     parameters.sky = renderTreeParameters.sky ? &*renderTreeParameters.sky : nullptr;
     const auto& sourceRenderItems = renderTree.getSourceRenderItems();

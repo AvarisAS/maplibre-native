@@ -33,6 +33,9 @@ public:
     bool depthTest = false;
     bool depthWrite = true;
     vk::CompareOp depthFunction = vk::CompareOp::eAlways;
+    // Avaris: slope-scaled depth bias, 0 = none. Part of the pipeline (and its hash), so every
+    // other drawable is drawn without it.
+    float depthBiasSlope = 0.0f;
 
     bool stencilTest = false;
     vk::CompareOp stencilFunction = vk::CompareOp::eNever;

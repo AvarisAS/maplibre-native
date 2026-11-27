@@ -414,6 +414,7 @@ std::size_t PipelineInfo::hash() const {
                       depthTest,
                       depthWrite,
                       depthFunction,
+                      depthBiasSlope,
                       stencilTest,
                       stencilFunction,
                       stencilPass,

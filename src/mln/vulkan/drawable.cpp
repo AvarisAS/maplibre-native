@@ -30,6 +30,13 @@
 namespace mln {
 namespace vulkan {
 
+namespace {
+// Avaris: as mtl/drawable.cpp. Two meshes of the same sloping plane (the sea level and a seabed
+// at 0 m) disagree by the plane's depth slope over the rasteriser's vertex snap: stripes. A
+// slope-only bias of 1/64 px clears them. Reversed depth, so nearer is greater and it is positive.
+constexpr float seaSlopeBias = 1.0f / 64.0f;
+} // namespace
+
 struct IndexBuffer : public gfx::IndexBufferBase {
     IndexBuffer(std::unique_ptr<gfx::IndexBuffer>&& buffer_)
         : buffer(std::move(buffer_)) {}
@@ -323,8 +330,11 @@ void Drawable::draw(PaintParameters& parameters) const {
 
     impl->pipelineInfo.setRenderable(renderPass_.getDescriptor().renderable);
 
-    if (getSeaLevel() && parameters.terrain) {
-        // Avaris: flat at sea level, tested against the terrain's depth (`*-elevation-reference: sea`)
+    // Avaris: flat at sea level, tested against the terrain's depth (`*-elevation-reference: sea`).
+    // A circle is not tested per fragment: its tweaker turns the depth off over terrain and the
+    // shader tests the centre instead (shaders/vulkan/circle.hpp). As mtl::Drawable::draw.
+    const bool seaDepth = getSeaLevel() && parameters.terrain != nullptr && enableDepth;
+    if (seaDepth) {
         impl->pipelineInfo.setDepthMode(parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly));
     } else if (enableDepth) {
         if (impl->depthFor3D.has_value()) {
@@ -340,6 +350,7 @@ void Drawable::draw(PaintParameters& parameters) const {
     } else {
         impl->pipelineInfo.setDepthMode(gfx::DepthMode::disabled());
     }
+    impl->pipelineInfo.depthBiasSlope = (seaDepth && parameters.reversedDepth) ? seaSlopeBias : 0.0f;
 
     if (enableStencil) {
         if (impl->stencilFor3D.has_value()) {

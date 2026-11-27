@@ -218,3 +218,22 @@ Reversed depth composed with #4868's depth ranges:
   to GL's before the test. The avaris.8 path through the DEM slot (`dem_enabled == 2`) is gone.
 - Vulkan and GL are untouched: not reversed, upstream's ranges.
 - Android backend for the port: Vulkan (27.11.2026), since reversed depth needs clip z in [0, 1].
+
+## Vulkan: reversed depth over terrain (Android port, step 2)
+
+- Vulkan main pass is reversed while terrain is on, as Metal, when the surface depth format is
+  D32_SFLOAT_S8_UINT (now preferred over D24). Without it the pass stays unreversed
+  (`vulkan::RenderableResource::supportsReversedDepth`, decided per frame in renderer_impl.cpp)
+  and a warning is logged: that device has the pre-port behaviour.
+- Sea-level slope bias 1/64 px is pipeline state (`PipelineInfo::depthBiasSlope`, in the hash).
+- Vulkan circle shader reads `depth_enabled == 2`; Vulkan terrain shader has the drape fog.
+- Metal and GL untouched.- Checked on macOS Vulkan (MoltenVK 1.4.2, Apple M3 Max): `TerrainSeaLevel.*` 8/8 (5/8 before);
+  macOS Metal 203/203 and iOS framework unchanged.
+- Known flake, not from this port: `TerrainUnseenTiles.LeavingThemOutLeavesThePictureAsItWas` on
+  macOS Vulkan fails 11 of 14 runs before the port and 9 of 27 after (small blobs present in one of
+  the two maps, alpha 255 in both; not depth faults). Judge it on repeated runs; do not raise its
+  20 px tolerance.
+- iOS sim check of 81177622f4a9 against 7.0.0-avaris.8 (Reine, same camera): shoreline, shallow
+  water, 3D boats behind the ridge and layer toggles match. Not covered on screen: the sky with
+  terrain (no automated test either; `sky/basic` and `sky/zoom-expression` pass without terrain).
+- Decided 27.11.2026: circles not at sea level hide behind ridges (upstream behaviour); kept.

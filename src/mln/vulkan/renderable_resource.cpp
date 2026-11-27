@@ -176,9 +176,12 @@ void SurfaceRenderableResource::initDepthStencil() {
     const auto& dispatcher = backend.getDispatcher();
 
     // check for depth format support
+    // Avaris: float depth first. The main pass over terrain is drawn with a reversed depth buffer
+    // (PaintParameters::reversedDepth), which only gains precision in a float format; with a
+    // unorm one the pass stays unreversed (supportsReversedDepth()).
     const std::vector<vk::Format> formats = {
-        vk::Format::eD24UnormS8Uint,
         vk::Format::eD32SfloatS8Uint,
+        vk::Format::eD24UnormS8Uint,
         vk::Format::eD16UnormS8Uint,
     };
 
@@ -193,6 +196,10 @@ void SurfaceRenderableResource::initDepthStencil() {
     }
 
     setDepthFormat(*formatIt);
+    if (depthFormat != vk::Format::eD32SfloatS8Uint) {
+        mln::Log::Warning(mln::Event::Render,
+                          "Vulkan: no D32_SFLOAT_S8_UINT depth format; reversed depth over terrain is off");
+    }
 
     const auto imageUsage = vk::ImageUsageFlags() | vk::ImageUsageFlagBits::eDepthStencilAttachment |
                             vk::ImageUsageFlagBits::eTransientAttachment;

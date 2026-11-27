@@ -155,6 +155,10 @@ const vk::UniquePipeline& ShaderProgram::getPipeline(const PipelineInfo& pipelin
                                  .setCullMode(pipelineInfo.cullMode)
                                  .setFrontFace(pipelineInfo.frontFace)
                                  .setPolygonMode(pipelineInfo.polygonMode)
+                                 .setDepthBiasEnable(pipelineInfo.depthBiasSlope != 0.0f)
+                                 .setDepthBiasConstantFactor(0.0f)
+                                 .setDepthBiasClamp(0.0f)
+                                 .setDepthBiasSlopeFactor(pipelineInfo.depthBiasSlope)
                                  .setLineWidth(1.0f);
 
     const auto multisampleState = vk::PipelineMultisampleStateCreateInfo().setRasterizationSamples(
