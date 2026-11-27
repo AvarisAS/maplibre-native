@@ -1,0 +1,76 @@
+# Avaris: build the Android SDK (Vulkan) from avaris/main and publish it to GitHub Packages
+# (Maven) on AvarisAS/maplibre-native, plus a GitHub release with the AAR attached.
+#
+# Trigger: push a tag `android-v<semver>-avaris.<n>` (for example android-v13.8.0-avaris.1),
+# or run manually with a version.
+#
+# Coordinates: org.maplibre.gl:android-sdk-vulkan:<version>
+# Repository:  https://maven.pkg.github.com/AvarisAS/maplibre-native
+# Consumers need a token with read:packages (GitHub Packages Maven always needs auth).
+#
+# No signing: publishing to a configured repository skips it (maplibre.gradle-publish).
+# Nothing here pushes to maplibre/maplibre-native.
+name: avaris-android-release
+
+on:
+  push:
+    tags:
+      - "android-v*-avaris.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Maven version, e.g. 13.8.0-avaris.1"
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    defaults:
+      run:
+        working-directory: platform/android
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve version
+        env:
+          INPUT_VERSION: ${{ inputs.version }}
+        run: |
+          if [[ -n "$INPUT_VERSION" ]]; then v="$INPUT_VERSION"; else v="${GITHUB_REF_NAME#android-v}"; fi
+          [[ "$v" =~ ^[0-9]+\.[0-9]+\.[0-9]+-avaris\.[0-9]+$ ]] || { echo "bad version $v"; exit 1; }
+          echo "version=$v" >> "$GITHUB_ENV"
+          echo "$v" > VERSION
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Build and publish (Vulkan, release)
+        env:
+          MAVEN_REPOSITORY_URL: https://maven.pkg.github.com/${{ github.repository }}
+          MAVEN_REPOSITORY_USERNAME: ${{ github.actor }}
+          MAVEN_REPOSITORY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ./gradlew --no-daemon -Pmaplibre.abis=all \
+            :MapLibreAndroid:assembleVulkanRelease \
+            :MapLibreAndroid:publishVulkanReleasePublicationToConfiguredRepository
+
+      - name: GitHub release with the AAR
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cp MapLibreAndroid/build/outputs/aar/MapLibreAndroid-vulkan-release.aar "android-sdk-vulkan-${version}.aar"
+          tag="android-v${version}"
+          gh release view "$tag" >/dev/null 2>&1 || gh release create "$tag" --target "$GITHUB_SHA" \
+            --title "Android ${version}" --prerelease \
+            --notes "org.maplibre.gl:android-sdk-vulkan:${version} on https://maven.pkg.github.com/${GITHUB_REPOSITORY}"
+          gh release upload "$tag" "android-sdk-vulkan-${version}.aar" --clobber
