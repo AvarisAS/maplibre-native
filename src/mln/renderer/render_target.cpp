@@ -292,6 +292,14 @@ RenderTarget::RenderResult RenderTarget::render(RenderOrchestrator& orchestrator
                                                 const RenderTree& renderTree,
                                                 PaintParameters& parameters,
                                                 bool canRerender) {
+    // Avaris: an offscreen target keeps the usual depth (cleared to 1, less is nearer); only the
+    // main pass is reversed.
+    struct DepthGuard {
+        PaintParameters& p;
+        bool prev;
+        ~DepthGuard() { p.reversedDepth = prev; }
+    } depthGuard{parameters, parameters.reversedDepth};
+    parameters.reversedDepth = false;
     // Render-once targets are hillshade prepare targets (opt-in via setRenderOnce): the DEM
     // texture is baked into the prepare drawable once (RenderHillshadeLayer::update calls
     // setImage), so the DEM->hillshade output is immutable. Render once and keep the

@@ -46,6 +46,13 @@ void TileLayerGroup::render(RenderOrchestrator&, PaintParameters& parameters) {
 
     auto& context = static_cast<Context&>(parameters.context);
     auto& renderPass = static_cast<RenderPass&>(*parameters.renderPass);
+
+    // Avaris: the depth sense follows the pass (reversed in the main pass over terrain); a state
+    // cached for the other sense is stale when terrain comes or goes.
+    if (stateDepthReversed != parameters.reversedDepth) {
+        stateDepth.reset();
+        stateDepthReversed = parameters.reversedDepth;
+    }
     const auto& renderable = renderPass.getDescriptor().renderable;
 
     // `stencilModeFor3D` uses a different stencil mask value each time its called, so if the

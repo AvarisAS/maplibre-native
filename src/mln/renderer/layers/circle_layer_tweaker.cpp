@@ -108,10 +108,14 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
 
         // Circles hidden behind terrain: packed terrain depth, read by calculate_visibility in the
         // vertex shader as symbols do (maplibre-gl-js does the same).
+        // Avaris: a sea-level circle is tested the same way, once, at its centre (a per-fragment
+        // depth test would cut the screen-facing quad in half along the ground under it). In a
+        // reversed pass its matrix carries a reversed [0, 1] clip z (LayerTweaker::getTileMatrix),
+        // and 2 tells the shader to turn it back to GL's before the test (mtl/circle.hpp).
         float depthEnabled = 0.0f;
         if (terrainEnabled) {
             drawable.setTexture(parameters.terrain->getDepthTexture(context), idCircleDepthTexture);
-            depthEnabled = 1.0f;
+            depthEnabled = (layerGroup.isSeaLevel() && parameters.reversedDepth) ? 2.0f : 1.0f;
         }
 
         // The terrain surface writes depth (so its skirts get occluded); circles

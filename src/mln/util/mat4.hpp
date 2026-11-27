@@ -57,6 +57,13 @@ inline void remapClipZToUnitRange(mat4& m) {
     for (std::size_t i = 2; i < 16; i += 4) m[i] = 0.5 * (m[i] + m[i + 1]);
 }
 
+// Avaris: reverse a [0, 1] clip z (z' = w - z), so the near plane lands on 1 and the far plane on
+// 0 and a float depth buffer keeps its precision at a distance (PaintParameters::reversedDepth).
+// `scale` multiplies the reversed z: a relative depth bias toward the camera when above 1.
+inline void reverseUnitClipZ(mat4& m, double scale = 1.0) {
+    for (std::size_t i = 2; i < 16; i += 4) m[i] = (m[i + 1] - m[i]) * scale;
+}
+
 // Transform a 4D vector by a 4x4 matrix (v * m).
 // The result and matrix must not be the same array.
 void transformMat4(vec4& out, const vec4& a, const mat4& m);

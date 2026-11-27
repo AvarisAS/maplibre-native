@@ -47,6 +47,13 @@ void LayerGroup::render(RenderOrchestrator&, PaintParameters& parameters) {
     auto& renderPass = static_cast<RenderPass&>(*parameters.renderPass);
     const auto& renderable = renderPass.getDescriptor().renderable;
 
+    // Avaris: the depth sense follows the pass (reversed in the main pass over terrain); a state
+    // cached for the other sense is stale when terrain comes or goes.
+    if (stateDepthReversed != parameters.reversedDepth) {
+        stateDepth.reset();
+        stateDepthReversed = parameters.reversedDepth;
+    }
+
     // mtl::Drawable::draw sets no depth-stencil state for 3D drawables - the layer
     // group owns it, so all its 3D drawables share one stencilModeFor3D value (see
     // TileLayerGroup::render, which has always done this). This plain layer group

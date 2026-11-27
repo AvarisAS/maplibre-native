@@ -3,6 +3,7 @@
 #include <mln/map/transform_state.hpp>
 #include <mln/renderer/render_tree.hpp>
 #include <mln/renderer/render_tile.hpp>
+#include <mln/renderer/paint_parameters.hpp>
 #include <mln/shaders/layer_ubo.hpp>
 #include <mln/style/layer_properties.hpp>
 #include <mln/util/containers.hpp>
@@ -89,6 +90,9 @@ mat4 LayerTweaker::getTileMatrix(const UnwrappedTileID& tileID,
         // Depth-tested against the terrain mesh, whose matrix is remapped to the [0, 1] clip
         // volume (TerrainLayerTweaker); the same remap here keeps the two depths comparable.
         matrix::remapClipZToUnitRange(matrix);
+        if (parameters.reversedDepth) {
+            matrix::reverseUnitClipZ(matrix, PaintParameters::seaLevelDepthScale);
+        }
 #endif
         return matrix;
     }

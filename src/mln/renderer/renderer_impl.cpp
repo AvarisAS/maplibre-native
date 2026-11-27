@@ -252,6 +252,10 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
     parameters.symbolFadeChange = renderTreeParameters.symbolFadeChange;
     parameters.opaquePassCutoff = renderTreeParameters.opaquePassCutOff;
     parameters.terrain = orchestrator.getRenderTerrain();
+#if MLN_RENDER_BACKEND_METAL
+    // Avaris: with terrain the main pass has a reversed depth buffer (PaintParameters::reversedDepth).
+    parameters.reversedDepth = parameters.terrain != nullptr;
+#endif
     parameters.sky = renderTreeParameters.sky ? &*renderTreeParameters.sky : nullptr;
     const auto& sourceRenderItems = renderTree.getSourceRenderItems();
 
@@ -509,7 +513,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
                     terrainTweaker->execute(*layerGroup, parameters);
                 }
                 if (const auto& depthLayerGroup = terrain->getDepthLayerGroup()) {
-                    terrainTweaker->execute(*depthLayerGroup, parameters);
+                    terrainTweaker->execute(*depthLayerGroup, parameters, /*depthPass=*/true);
                 }
             }
         }
@@ -696,7 +700,7 @@ void Renderer::Impl::render(const RenderTree& renderTree, const std::shared_ptr<
                 "main buffer",
                 {.renderable = parameters.backend.getDefaultRenderable(),
                  .clearColor = color,
-                 .clearDepth = 1.0f,
+                 .clearDepth = parameters.reversedDepth ? 0.0f : 1.0f,
                  .clearStencil = 0});
 #if MLN_RENDER_BACKEND_OPENGL
             parameters.updateStencilBufferAvailability();

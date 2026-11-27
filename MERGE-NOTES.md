@@ -76,6 +76,11 @@ this fork can merge `main`.
 
 ## Release
 
+- **Avaris only.** Nothing from this fork is pushed, PR'd or run against `maplibre/maplibre-native`
+  (or any other remote). Contributing back happens only as a PR after talking to MapLibre members.
+  `gh` here defaults to upstream: always pass `-R AvarisAS/maplibre-native`. See MarineCatch
+  `docs/beslutninger/2026-11-27-motorgaffelen-er-avaris-sin.md`.
+
 - Version: `platform/ios/VERSION` says `7.0.0`; we publish `7.0.0-avaris.N`.
 - First release `7.0.0-avaris.1` was built by hand on macOS 27.2 / Xcode 27.2, using the same command
   as `.github/workflows/avaris-ios-release.yml`.
@@ -185,4 +190,31 @@ Merged upstream `feature/terrain-3d` at `f22ec6fcb11fc729128e324134d5dff45dde89e
 - `TerrainEvaluatedPropsUBO`: bytes 0..64 are upstream's (haze at 32/48); the Metal fog fields follow from 64, size 128.
 - Replaced by upstream: our layer depth offset in the matrix and `DepthMode::disabled()` for 2D on Metal/Vulkan (c180d1be) gave way to #4868's depth range on every backend, so the sea drawable now sits in the 3D depth range on Metal; DEM ancestors are kept when loaded, not requested; the full-size drape rule is upstream's (nearest finest tiles, capped).
 - Checked: iOS `bazel build --compilation_mode=opt --//:renderer=metal //platform/ios:MapLibre.dynamic` and Android `:MapLibreAndroid:assembleOpenglRelease` (arm64-v8a) both build. **Not yet checked on the simulator:** the sea surface against the invariants (`docs/beslutninger/2026-11-26-vannflata-er-en-invariant.md` in MarineCatch); do that before any iOS release from this branch.
-- Android backend for the port: OpenGL ES.
+- Android backend for the port: OpenGL ES (changed to Vulkan on 27.11.2026, see below).
+
+## 7.0.0-avaris.8 (27.11.2026): reversed depth over terrain
+
+- Metal main pass uses reversed depth (clear 0, GreaterEqual) for the terrain mesh, sea-level
+  drawables and fill-extrusions while terrain is on; sea bias is slope-only (1/64 px). Low land
+  now hides the sea surface (was: the -32/-2 bias acted as a lift of tens of metres). Sea-level
+  circles are tested once at the centre against terrain depth. GL/Vulkan unchanged.
+- `TerrainSeaLevel.*` 8/8, terrain + renderer suites 274/274 (macOS Metal). Not on device at release.
+- Built by hand (the workflow has no `DISTRIBUTION_TOKEN`; its tag run was cancelled), checksum
+  `8239ce40341cc50361cb87766e6b692f062b4fd9e4fa8503c0e1a82f7134dbc2`. Release asset, Package.swift
+  and tag `7.0.0-avaris.8` in AvarisAS/maplibre-native-distribution. Built from 50415843ad88.
+
+## Merge of avaris/main (7.0.0-avaris.8) into the terrain-3d merge, 2026-11-27
+
+Reversed depth composed with #4868's depth ranges:
+
+- While `PaintParameters::reversedDepth` is set (Metal main pass with terrain), `depthModeFor3D` is
+  GreaterEqual with range {0, 1}, not {0, depthRangeSize} or its mirror: a range that does not
+  start at 0 adds an offset to every depth and gives back the float precision the reversal is for.
+- `depthModeForSublayer` is disabled while reversed, as avaris.8 had it on Metal. The only 2D
+  drawable that tests depth in that pass is the sky (far plane, drawn first); the draped layers
+  are drawn in offscreen targets, which are never reversed and keep upstream's sublayer ranges.
+- Circles: one visibility test, upstream's (depth texture in slot 1, `depth_enabled`). A sea-level
+  circle on a reversed matrix sends `depth_enabled = 2` and the Metal shader turns its clip z back
+  to GL's before the test. The avaris.8 path through the DEM slot (`dem_enabled == 2`) is gone.
+- Vulkan and GL are untouched: not reversed, upstream's ranges.
+- Android backend for the port: Vulkan (27.11.2026), since reversed depth needs clip z in [0, 1].

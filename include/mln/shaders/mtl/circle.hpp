@@ -168,8 +168,18 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
                                     drawable.dem_exaggeration,
                                     drawable.dem_enabled);
 
-    // Hidden where the terrain covers the circle's centre, as maplibre-gl-js does (and as symbols are)
-    const float visibility = calculate_visibility(drawable.matrix * float4(circle_center, ele, 1),
+    // Hidden where the terrain covers the circle's centre, as maplibre-gl-js does (and as symbols are).
+    // Avaris: a circle at sea level (`circle-elevation-reference: sea`) is a mark, as a symbol
+    // is: land in front of its centre hides the whole of it, and nothing else cuts it. Its quad
+    // faces the screen at the centre's depth, so a per-fragment depth test against the ground
+    // under it would take the lower half over shallow water and leave the upper half over low
+    // land. depth_enabled == 2: its matrix has a reversed [0, 1] clip z (z' = w - z), turned
+    // back to GL's z here, which is what the packed terrain depth holds.
+    float4 centre = drawable.matrix * float4(circle_center, ele, 1);
+    if (drawable.depth_enabled == 2.0) {
+        centre.z = centre.w - 2.0 * centre.z;
+    }
+    const float visibility = calculate_visibility(centre,
                                                   depthTexture,
                                                   depthSampler,
                                                   drawable.depth_enabled,

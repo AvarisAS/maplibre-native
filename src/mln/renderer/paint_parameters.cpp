@@ -200,7 +200,12 @@ mat4 PaintParameters::clipMatrixForTile(const UnwrappedTileID& tileID) const {
 }
 
 gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n, gfx::DepthMaskType mask) const {
-    if (currentLayer < opaquePassCutoff) {
+    // Avaris: no sublayer depths in a reversed pass (the main pass over terrain on Metal). The 3D
+    // range there is the whole of [0, 1] from 0 (see depthModeFor3D), so there is no band behind
+    // it to order 2D layers in, and nothing needs one: the draped layers are drawn in offscreen
+    // targets, which are never reversed, and what is left in the main pass (the sky first, then
+    // circles and symbols, which test the terrain in their shaders) is in painter's order.
+    if (currentLayer < opaquePassCutoff || reversedDepth) {
         return gfx::DepthMode::disabled();
     }
 
@@ -209,6 +214,12 @@ gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n,
 }
 
 gfx::DepthMode PaintParameters::depthModeFor3D(gfx::DepthMaskType mask) const {
+    // Avaris: reversed, the range is all of [0, 1] and greater is nearer. It has to start at 0:
+    // the far end of a reversed float buffer is where its precision is, and a range that begins
+    // above 0 (the mirror of upstream's, {1 - depthRangeSize, 1}) adds that to every depth.
+    if (reversedDepth) {
+        return gfx::DepthMode{.func = gfx::DepthFunctionType::GreaterEqual, .mask = mask, .range = {0.0f, 1.0f}};
+    }
     return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual,
                           .mask = mask,
                           .range = {0.0, depthRangeSize}};
