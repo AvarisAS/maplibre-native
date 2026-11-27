@@ -40,9 +40,21 @@ public:
     }
 
     ~OffscreenTextureResource() noexcept override {
-        framebuffer.reset();
-        renderPass.reset();
-        depthAllocation.reset();
+        // Avaris: the previous frame may still be drawing into this target (maxFrames = 2), so the
+        // framebuffer, render pass and depth image go through the deletion queue like a resize does
+        // (releaseDepthImage, createFramebuffer). Destroying them here freed objects the GPU was
+        // still executing: a "premature free" page fault and device loss on Adreno when terrain
+        // drape targets are dropped during a pan or tilt. The colour texture defers itself.
+        if (framebuffer || renderPass || depthAllocation) {
+            auto fb = std::make_shared<vk::UniqueFramebuffer>(std::move(framebuffer));
+            auto rp = std::make_shared<vk::UniqueRenderPass>(std::move(renderPass));
+            auto depth = std::make_shared<UniqueImageAllocation>(std::move(depthAllocation));
+            backend.getContext<Context>().enqueueDeletion([fb, rp, depth](auto&) mutable {
+                fb->reset();
+                rp->reset();
+                depth->reset();
+            });
+        }
         colorTexture.reset();
 
         backend.getContext().renderingStats().numFrameBuffers--;
