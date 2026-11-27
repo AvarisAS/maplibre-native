@@ -581,23 +581,17 @@ public:
 
 protected:
     static ScreenCoordinate latLngToScreenCoordinate(const LatLng& p, const TransformState& s) {
-        LatLng unwrappedLatLng = p.wrapped();
-        unwrappedLatLng.unwrapForShortestPath(s.getLatLng(LatLng::Wrapped));
-        ScreenCoordinate point = s.latLngToScreenCoordinate(unwrappedLatLng);
+        ScreenCoordinate point = s.latLngToScreenCoordinate(s.latLngNearCenter(p));
         point.y = s.getSize().height - point.y;
         return point;
     }
 
     static Point<double> project(const LatLng& c, const TransformState& s) {
-        LatLng unwrappedLatLng = c.wrapped();
-        unwrappedLatLng.unwrapForShortestPath(s.getLatLng(LatLng::Wrapped));
-        return Projection::project(unwrappedLatLng, s.getScale());
+        return Projection::project(s.latLngNearCenter(c), s.getScale());
     }
 
     static Point<double> unproject(const LatLng& c, const TransformState& s) {
-        LatLng unwrappedLatLng = c.wrapped();
-        unwrappedLatLng.unwrapForShortestPath(s.getLatLng(LatLng::Wrapped));
-        return Projection::project(unwrappedLatLng, s.getScale());
+        return Projection::project(s.latLngNearCenter(c), s.getScale());
     }
 
     void updateRadius(const mln::LocationIndicatorRenderParameters& params) {
@@ -1124,6 +1118,12 @@ void RenderLocationIndicatorLayer::update(gfx::ShaderRegistry& shaders,
     }
 
     auto* localLayerGroup = static_cast<LayerGroup*>(layerGroup.get());
+
+    // recreate drawables if any is dropped
+    constexpr std::size_t locationIndicatorDrawables = 5;
+    if (localLayerGroup->getDrawableCount() != locationIndicatorDrawables) {
+        removeAllDrawables();
+    }
 
     if (localLayerGroup->getDrawableCount() == 0) {
         // create empty drawable using a builder

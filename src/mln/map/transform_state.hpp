@@ -132,6 +132,8 @@ public:
 
     // Matrix
     void matrixFor(mat4&, const UnwrappedTileID&) const;
+    /// The symbol occlusion ramp behind 3D terrain (calculate_visibility in the shader preludes)
+    /// is derived from this near plane of one pixel: change the default and rescale it there.
     void getProjMatrix(mat4& matrix, uint16_t nearZ = 1, bool aligned = false) const;
     /// Near and far planes of maplibre-gl-js's fog matrix: the projection's far plane, with the
     /// near plane moved out to where the view ray through the centre meets sea level. A fragment's
@@ -166,6 +168,8 @@ public:
 
     // Position
     LatLng getLatLng(LatLng::WrapMode = LatLng::Unwrapped) const;
+    /// The world copy of a location nearest the center, which bounds can keep past the antimeridian.
+    LatLng latLngNearCenter(const LatLng&) const;
     double getCenterAltitude() const;
     /// The lowest terrain height (metres, exaggeration applied) in the DEM tile under the map
     /// centre, as gl-js's `minElevationForCurrentTile`. The far plane reaches down to it, so a

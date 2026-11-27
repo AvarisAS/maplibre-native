@@ -27,7 +27,8 @@ struct alignas(16) CircleDrawableUBO {
     /* 144 */ float dem_dim;
     /* 148 */ float dem_exaggeration;
     /* 152 */ float dem_enabled;
-    /* 156 */ float pad4;
+    /* 156 */ float depth_enabled; // terrain depth texture bound (occlusion behind terrain): 1, or 2 when the
+                                   // matrix has a reversed [0, 1] clip z (Avaris, PaintParameters::reversedDepth)
     /* 160 */
 };
 static_assert(sizeof(CircleDrawableUBO) == 10 * 16);

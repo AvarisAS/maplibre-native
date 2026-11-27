@@ -78,6 +78,8 @@ void FillExtrusionBucket::addFeature(const GeometryTileFeature& feature,
                                      const PatternLayerMap& patternDependencies,
                                      std::size_t index,
                                      const CanonicalTileID& canonical) {
+    double roundedCornerDistance = layout.get<FillExtrusionRoundedCornerDistance>();
+
     const auto vertexOffset = vertices.elements();
 
     for (auto& polygon : classifyRings(geometry)) {
@@ -85,7 +87,6 @@ void FillExtrusionBucket::addFeature(const GeometryTileFeature& feature,
         limitHoles(polygon, 500);
 
         std::variant<GeometryCollection, GeometryCollectionFloat> polyVariant = polygon;
-        double roundedCornerDistance = layout.get<FillExtrusionRoundedCornerDistance>();
         if (roundedCornerDistance > 0) {
             polyVariant = roundPolygonCorners(polygon, roundedCornerDistance);
         }
@@ -251,6 +252,16 @@ void FillExtrusionBucket::addFeature(const GeometryTileFeature& feature,
 
 void FillExtrusionBucket::upload([[maybe_unused]] gfx::UploadPass& uploadPass) {
     uploaded = true;
+    // Layout is final: once these are in GPU buffers the CPU copies are dropped, unless the map
+    // reads them back to report rendered features.
+    if (retainFeaturesById) {
+        return;
+    }
+    sharedVertices->release();
+    sharedTriangles->release();
+    for (auto& pair : paintPropertyBinders) {
+        pair.second.release();
+    }
 }
 
 bool FillExtrusionBucket::hasData() const {

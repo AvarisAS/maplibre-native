@@ -39,6 +39,10 @@ public:
     /// return false; they have no swapchain or surface transform)
     virtual bool isSurface() const { return false; }
 
+    /// Avaris: whether the main pass into this renderable may use a reversed depth buffer
+    /// (PaintParameters::reversedDepth). Only with a float depth attachment.
+    virtual bool supportsReversedDepth() const { return false; }
+
 protected:
     RendererBackend& backend;
 
@@ -93,6 +97,7 @@ public:
     bool didSurfaceTransformUpdate() const;
 
     bool isSurface() const override { return true; }
+    bool supportsReversedDepth() const override { return depthFormat == vk::Format::eD32SfloatS8Uint; }
 
     // rotation needed to align framebuffer contents with device surface
     float getRotation() const override;

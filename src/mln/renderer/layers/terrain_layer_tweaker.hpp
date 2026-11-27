@@ -34,7 +34,8 @@ public:
 
 protected:
 #if MLN_UBO_CONSOLIDATION
-    // One per group: their matrices differ when the main pass has a reversed depth.
+    // One per group, the terrain group and the depth group: their matrices differ when the main
+    // pass has a reversed depth, and each group's drawables index their own buffer.
     gfx::UniformBufferPtr drawableUniformBuffer;
     gfx::UniformBufferPtr depthDrawableUniformBuffer;
 #endif

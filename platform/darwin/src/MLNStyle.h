@@ -312,21 +312,20 @@ MLN_EXPORT
 // MARK: Managing the Style's Terrain
 
 /**
- The style's 3D terrain configuration, or `nil` if the style does not have terrain
- enabled.
+ The style's 3D terrain, or `nil` if the map is flat.
 
- Setting this property to an ``MLNTerrain`` object drapes the map over the elevation
- data of the raster-dem source named by ``MLNTerrain/sourceIdentifier``. Setting it to
- `nil` removes terrain from the style.
+ Setting this property to an ``MLNTerrain`` object drapes the map over the elevation data of
+ one of the style's ``MLNRasterDEMSource`` objects. Setting it to `nil` makes the map flat
+ again. A style whose JSON has a `terrain` object starts with it set. Reading the property
+ returns a new object each time, so changing the terrain means setting a new one.
 
- > Note: Wait until the style has finished loading before setting this property. The
-    named source must be a raster-dem source that exists in the style; see
-    ``MLNRasterDEMSource``. You can use the
-    ``MLNMapViewDelegate/mapView:didFinishLoadingStyle:`` or
-    ``MLNMapViewDelegate/mapViewDidFinishLoadingMap:`` methods as indicators that it's
-    safe to modify the map's style.
+ The raster-dem source does not have to exist yet when the terrain is set, but the map stays
+ flat until it does. Loading a style replaces the terrain, so wait until the style has
+ finished loading before setting this property. You can use the
+ ``MLNMapViewDelegate/mapView:didFinishLoadingStyle:`` method as an indicator that it's safe
+ to modify the map's style.
  */
-@property (nonatomic, nullable, strong) MLNTerrain *terrain;
+@property (nonatomic, nullable, copy) MLNTerrain *terrain;
 
 // MARK: Managing the Style's Sky
 

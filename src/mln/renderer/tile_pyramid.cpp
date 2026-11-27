@@ -6,6 +6,7 @@
 #include <mln/map/transform.hpp>
 #include <mln/math/clamp.hpp>
 #include <mln/actor/scheduler.hpp>
+#include <mln/util/projection.hpp>
 #include <mln/util/tile_cover.hpp>
 #include <mln/util/tile_range.hpp>
 #include <mln/util/enum.hpp>
@@ -62,6 +63,8 @@ void TilePyramid::update(const std::vector<Immutable<style::LayerProperties>>& l
                          const Range<uint8_t> zoomRange,
                          std::optional<LatLngBounds> bounds,
                          std::function<std::unique_ptr<Tile>(const OverscaledTileID&, TileObserver*)> createTile) {
+    emptyTileIDs.clear();
+
     // If we need a relayout, abandon any cached tiles; they're now stale.
     if (needsRelayout) {
         cache.clear();
@@ -118,7 +121,8 @@ void TilePyramid::update(const std::vector<Immutable<style::LayerProperties>>& l
         .tileLodMode = parameters.tileLodMode,
         .roundZoom = type == SourceType::Raster || type == SourceType::Video,
         .elevationProvider = parameters.elevationProvider,
-        .tileLodOrigin = parameters.tileLodOrigin};
+        .tileLodOrigin = parameters.tileLodOrigin,
+        .minZoomReach = parameters.coverMinZoomReach};
 
     if (std::cmp_greater_equal(overscaledZoom, zoomRange.min)) {
         int32_t idealZoom = std::min<int32_t>(zoomRange.max, overscaledZoom);
@@ -152,11 +156,44 @@ void TilePyramid::update(const std::vector<Immutable<style::LayerProperties>>& l
                                   " tiles, only " + util::toString(idealTiles[0]) + " is taken in Tile mode.");
             idealTiles = {idealTiles[0]};
         }
+
+        // The tile over each position the cover leaves out, at the cover's finest zoom.
+        for (const auto& position : parameters.alsoCover) {
+            const auto at = Projection::project(position, idealZoom);
+            const UnwrappedTileID unwrapped(static_cast<uint8_t>(idealZoom),
+                                            static_cast<int64_t>(std::floor(at.x)),
+                                            static_cast<int64_t>(std::floor(at.y)));
+            const OverscaledTileID extra(static_cast<uint8_t>(tileZoom), unwrapped.wrap, unwrapped.canonical);
+            if (std::none_of(idealTiles.begin(), idealTiles.end(), [&](const OverscaledTileID& tile) {
+                    return tile.wrap == extra.wrap &&
+                           (tile.canonical == extra.canonical || extra.canonical.isChildOf(tile.canonical));
+                })) {
+                idealTiles.push_back(extra);
+            }
+        }
     }
 
     if (parameters.coverTileLimit > 0) {
         util::keepNearestTiles(idealTiles, parameters.coverTileLimit, parameters.coverTileLimitOrigin);
         util::keepNearestTiles(panTiles, parameters.coverTileLimit, parameters.coverTileLimitOrigin);
+    }
+
+    // After the cap, so that it keeps the tiles it did and only these go
+    if (parameters.leaveOutEmptyTiles && (type == SourceType::Vector || type == SourceType::GeoJSON)) {
+        const auto buildsNothing = [&](const OverscaledTileID& id) {
+            return std::none_of(layers.begin(), layers.end(), [&](const auto& layer) {
+                const auto& impl = *layer->baseImpl;
+                return id.overscaledZ >= std::floor(impl.minZoom) && id.overscaledZ < std::ceil(impl.maxZoom);
+            });
+        };
+        for (auto* cover : {&idealTiles, &panTiles}) {
+            for (const auto& id : *cover) {
+                if (buildsNothing(id)) emptyTileIDs.push_back(id.toUnwrapped());
+            }
+            std::erase_if(*cover, buildsNothing);
+        }
+        std::sort(emptyTileIDs.begin(), emptyTileIDs.end());
+        emptyTileIDs.erase(std::unique(emptyTileIDs.begin(), emptyTileIDs.end()), emptyTileIDs.end());
     }
 
     // Stores a list of all the tiles that we're definitely going to retain.
@@ -209,8 +246,10 @@ void TilePyramid::update(const std::vector<Immutable<style::LayerProperties>>& l
         return tiles.emplace(tileID, std::move(tile)).first->second.get();
     };
 
-    // Keep ancestors of the ideal cover loaded (but not rendered) when asked to - see
-    // TileParameters::retainAncestorLevels.
+    // Keep ancestors of the ideal cover that are already loaded (but not rendered) when asked to -
+    // see TileParameters::retainAncestorLevels. Never request one: that fetched up to eight extra
+    // levels and made still renders wait for them. As maplibre-gl-js does, only a parent that has
+    // already loaded is bound.
     if (parameters.retainAncestorLevels > 0) {
         std::set<OverscaledTileID> ancestors;
         for (const auto& id : idealTiles) {
@@ -226,10 +265,15 @@ void TilePyramid::update(const std::vector<Immutable<style::LayerProperties>>& l
         for (const auto& id : ancestors) {
             Tile* tile = getTileFn(id);
             if (!tile) {
-                tile = createTileFn(id);
+                // Back from the cache only if it is complete: an incomplete one held as Optional
+                // would wait on a cache-only load, and still renders on it (isLoaded)
+                const auto& cached = cache.getTiles();
+                if (const auto it = cached.find(id); it != cached.end() && it->second->isComplete()) {
+                    tile = tiles.emplace(id, cache.pop(id)).first->second.get();
+                }
             }
-            if (tile) {
-                retainTileFn(*tile, TileNecessity::Required);
+            if (tile && tile->isComplete()) {
+                retainTileFn(*tile, TileNecessity::Optional);
             }
         }
     }

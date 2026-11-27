@@ -53,8 +53,10 @@ void DrawableGL::draw(PaintParameters& parameters) const {
         // Avaris: flat at sea level, tested against the terrain's depth (`*-elevation-reference: sea`)
         context.setDepthMode(parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly));
     } else if (enableDepth) {
-        context.setDepthMode(getIs3D() ? parameters.depthModeFor3D(getDepthType())
-                                       : parameters.depthModeForSublayer(getSubLayerIndex(), getDepthType()));
+        auto depth = getIs3D() ? parameters.depthModeFor3D(getDepthType())
+                               : parameters.depthModeForSublayer(getSubLayerIndex(), getDepthType());
+        if (getIs3D() && getDepthMaskFor3D()) depth.mask = *getDepthMaskFor3D();
+        context.setDepthMode(depth);
     } else {
         context.setDepthMode(gfx::DepthMode::disabled());
     }

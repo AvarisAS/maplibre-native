@@ -16,6 +16,7 @@
 #import "MLNOfflineStorage_Private.h"
 #import "MLNShape_Private.h"
 #import "MLNStyle_Private.h"
+#import "MLNTerrain_Private.h"
 
 #import "MLNAnnotationImage.h"
 #import "MLNImageSource.h"
@@ -823,19 +824,19 @@ static_assert(static_cast<uint8_t>(MLNTerrainSkirtLengthNone) ==
 }
 
 - (void)setTerrainLoadMode:(MLNTerrainLoadMode)terrainLoadMode {
-  _mbglMap->setTerrainLoadMode(static_cast<mln::TerrainLoadMode>(terrainLoadMode));
+  _mbglMap->setTerrainLoadMode(MLNTerrainLoadModeToMBGL(terrainLoadMode));
 }
 
 - (MLNTerrainLoadMode)terrainLoadMode {
-  return static_cast<MLNTerrainLoadMode>(_mbglMap->getTerrainLoadMode());
+  return MLNTerrainLoadModeFromMBGL(_mbglMap->getTerrainLoadMode());
 }
 
 - (void)setTerrainSkirtLength:(MLNTerrainSkirtLength)terrainSkirtLength {
-  _mbglMap->setTerrainSkirtLength(static_cast<mln::TerrainSkirtLength>(terrainSkirtLength));
+  _mbglMap->setTerrainSkirtLength(MLNTerrainSkirtLengthToMBGL(terrainSkirtLength));
 }
 
 - (MLNTerrainSkirtLength)terrainSkirtLength {
-  return static_cast<MLNTerrainSkirtLength>(_mbglMap->getTerrainSkirtLength());
+  return MLNTerrainSkirtLengthFromMBGL(_mbglMap->getTerrainSkirtLength());
 }
 
 - (mln::Renderer *)renderer {

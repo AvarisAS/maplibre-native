@@ -598,21 +598,21 @@ const MLNExceptionName MLNRedundantSourceIdentifierException =
 // MARK: Style terrain
 
 - (void)setTerrain:(nullable MLNTerrain *)terrain {
-  if (!terrain) {
-    self.rawStyle->setTerrain(nullptr);
-    return;
+  MLNLogDebug(@"Setting terrain: %@", terrain);
+  if (!self.rawStyle->isLoaded()) {
+    MLNLogWarning(@"Setting terrain before the style has finished loading. Loading the style "
+                  @"replaces it. Wait for -mapView:didFinishLoadingStyle:.");
   }
-
-  self.rawStyle->setTerrain(std::make_unique<mln::style::Terrain>([terrain mbglTerrain]));
+  if (terrain) {
+    self.rawStyle->setTerrain(std::make_unique<mln::style::Terrain>(terrain.mbglTerrain));
+  } else {
+    self.rawStyle->setTerrain(nullptr);
+  }
 }
 
 - (nullable MLNTerrain *)terrain {
   const mln::style::Terrain *mbglTerrain = self.rawStyle->getTerrain();
-  if (!mbglTerrain) {
-    return nil;
-  }
-
-  return [[MLNTerrain alloc] initWithMBGLTerrain:*mbglTerrain];
+  return mbglTerrain ? [[MLNTerrain alloc] initWithMBGLTerrain:*mbglTerrain] : nil;
 }
 
 // MARK: Style sky

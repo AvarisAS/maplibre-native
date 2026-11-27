@@ -182,6 +182,16 @@ this fork can merge `main`.
   in the zip), checksum `ea4a2e0c25859976ca91880086fa64870cd3b2a7bd28fc9245dcbdbaf5fe635a`.
   Release asset, Package.swift and tag `7.0.0-avaris.5` in AvarisAS/maplibre-native-distribution.
 
+## Merge of feature/terrain-3d, 2026-11-26 (Android port, step 1)
+
+Merged upstream `feature/terrain-3d` at `f22ec6fcb11fc729128e324134d5dff45dde89e8` (#5119 getTerrainElevation, #5120 haze, #5121 field of view and eye camera, #4712, main up to iOS 7.1.0 / Android 13.8.0). 60 files conflicted.
+
+- Upstream taken as the base; Avaris behaviour re-applied: sea-level `*-elevation-reference`, the Metal sea depth bias (no 25 cm lift), far plane under sea level, sky and the Metal drape fog, `[terrain-cover]` logging, the perspective-ratio label cutoff, `elevationAtCoordinate:`, `setSkyProperties:`.
+- `TerrainEvaluatedPropsUBO`: bytes 0..64 are upstream's (haze at 32/48); the Metal fog fields follow from 64, size 128.
+- Replaced by upstream: our layer depth offset in the matrix and `DepthMode::disabled()` for 2D on Metal/Vulkan (c180d1be) gave way to #4868's depth range on every backend, so the sea drawable now sits in the 3D depth range on Metal; DEM ancestors are kept when loaded, not requested; the full-size drape rule is upstream's (nearest finest tiles, capped).
+- Checked: iOS `bazel build --compilation_mode=opt --//:renderer=metal //platform/ios:MapLibre.dynamic` and Android `:MapLibreAndroid:assembleOpenglRelease` (arm64-v8a) both build. **Not yet checked on the simulator:** the sea surface against the invariants (`docs/beslutninger/2026-11-26-vannflata-er-en-invariant.md` in MarineCatch); do that before any iOS release from this branch.
+- Android backend for the port: OpenGL ES (changed to Vulkan on 27.11.2026, see below).
+
 ## 7.0.0-avaris.8 (27.11.2026): reversed depth over terrain
 
 - Metal main pass uses reversed depth (clear 0, GreaterEqual) for the terrain mesh, sea-level
@@ -192,3 +202,38 @@ this fork can merge `main`.
 - Built by hand (the workflow has no `DISTRIBUTION_TOKEN`; its tag run was cancelled), checksum
   `8239ce40341cc50361cb87766e6b692f062b4fd9e4fa8503c0e1a82f7134dbc2`. Release asset, Package.swift
   and tag `7.0.0-avaris.8` in AvarisAS/maplibre-native-distribution. Built from 50415843ad88.
+
+## Merge of avaris/main (7.0.0-avaris.8) into the terrain-3d merge, 2026-11-27
+
+Reversed depth composed with #4868's depth ranges:
+
+- While `PaintParameters::reversedDepth` is set (Metal main pass with terrain), `depthModeFor3D` is
+  GreaterEqual with range {0, 1}, not {0, depthRangeSize} or its mirror: a range that does not
+  start at 0 adds an offset to every depth and gives back the float precision the reversal is for.
+- `depthModeForSublayer` is disabled while reversed, as avaris.8 had it on Metal. The only 2D
+  drawable that tests depth in that pass is the sky (far plane, drawn first); the draped layers
+  are drawn in offscreen targets, which are never reversed and keep upstream's sublayer ranges.
+- Circles: one visibility test, upstream's (depth texture in slot 1, `depth_enabled`). A sea-level
+  circle on a reversed matrix sends `depth_enabled = 2` and the Metal shader turns its clip z back
+  to GL's before the test. The avaris.8 path through the DEM slot (`dem_enabled == 2`) is gone.
+- Vulkan and GL are untouched: not reversed, upstream's ranges.
+- Android backend for the port: Vulkan (27.11.2026), since reversed depth needs clip z in [0, 1].
+
+## Vulkan: reversed depth over terrain (Android port, step 2)
+
+- Vulkan main pass is reversed while terrain is on, as Metal, when the surface depth format is
+  D32_SFLOAT_S8_UINT (now preferred over D24). Without it the pass stays unreversed
+  (`vulkan::RenderableResource::supportsReversedDepth`, decided per frame in renderer_impl.cpp)
+  and a warning is logged: that device has the pre-port behaviour.
+- Sea-level slope bias 1/64 px is pipeline state (`PipelineInfo::depthBiasSlope`, in the hash).
+- Vulkan circle shader reads `depth_enabled == 2`; Vulkan terrain shader has the drape fog.
+- Metal and GL untouched.- Checked on macOS Vulkan (MoltenVK 1.4.2, Apple M3 Max): `TerrainSeaLevel.*` 8/8 (5/8 before);
+  macOS Metal 203/203 and iOS framework unchanged.
+- Known flake, not from this port: `TerrainUnseenTiles.LeavingThemOutLeavesThePictureAsItWas` on
+  macOS Vulkan fails 11 of 14 runs before the port and 9 of 27 after (small blobs present in one of
+  the two maps, alpha 255 in both; not depth faults). Judge it on repeated runs; do not raise its
+  20 px tolerance.
+- iOS sim check of 81177622f4a9 against 7.0.0-avaris.8 (Reine, same camera): shoreline, shallow
+  water, 3D boats behind the ridge and layer toggles match. Not covered on screen: the sky with
+  terrain (no automated test either; `sky/basic` and `sky/zoom-expression` pass without terrain).
+- Decided 27.11.2026: circles not at sea level hide behind ridges (upstream behaviour); kept.

@@ -33,6 +33,9 @@ public:
     bool depthTest = false;
     bool depthWrite = true;
     vk::CompareOp depthFunction = vk::CompareOp::eAlways;
+    // Avaris: slope-scaled depth bias, 0 = none. Part of the pipeline (and its hash), so every
+    // other drawable is drawn without it.
+    float depthBiasSlope = 0.0f;
 
     bool stencilTest = false;
     vk::CompareOp stencilFunction = vk::CompareOp::eNever;
@@ -47,7 +50,7 @@ public:
     // False when rendering into an offscreen target with no stencil attachment (e.g. the
     // terrain drape RTT, which has depth but no stencil); stencil test/write must be off.
     bool renderPassHasStencil = true;
-    vk::Extent2D viewExtent{};
+    vk::Viewport viewport{};
     vk::Rect2D scissorRect{};
 
     // dynamic values (not part of the pipeline/ignored in hash)

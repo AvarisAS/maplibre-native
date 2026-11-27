@@ -1,21 +1,20 @@
 #import "MLNTerrain.h"
 #import "MLNTerrain_Private.h"
 
-#import <mln/style/terrain.hpp>
-
 @implementation MLNTerrain
 
 - (instancetype)initWithSourceIdentifier:(NSString *)sourceIdentifier
                             exaggeration:(CGFloat)exaggeration {
   if (self = [super init]) {
     _sourceIdentifier = [sourceIdentifier copy];
-    _exaggeration = exaggeration;
+    // The renderer stores a float. Rounding here keeps a terrain equal to the one read back.
+    _exaggeration = static_cast<float>(exaggeration);
   }
   return self;
 }
 
 - (instancetype)initWithSourceIdentifier:(NSString *)sourceIdentifier {
-  return [self initWithSourceIdentifier:sourceIdentifier exaggeration:1.0];
+  return [self initWithSourceIdentifier:sourceIdentifier exaggeration:1];
 }
 
 - (instancetype)initWithMBGLTerrain:(const mln::style::Terrain &)mbglTerrain {
@@ -24,13 +23,12 @@
 }
 
 - (mln::style::Terrain)mbglTerrain {
-  return mln::style::Terrain(self.sourceIdentifier.UTF8String,
+  return mln::style::Terrain(self.sourceIdentifier.UTF8String ?: "",
                              static_cast<float>(self.exaggeration));
 }
 
 - (id)copyWithZone:(nullable NSZone *)zone {
-  return [[MLNTerrain allocWithZone:zone] initWithSourceIdentifier:self.sourceIdentifier
-                                                      exaggeration:self.exaggeration];
+  return self;
 }
 
 - (BOOL)isEqual:(id)other {
@@ -47,11 +45,11 @@
 }
 
 - (NSUInteger)hash {
-  return self.sourceIdentifier.hash ^ @(self.exaggeration).hash;
+  return self.sourceIdentifier.hash * 31 + @(self.exaggeration).hash;
 }
 
 - (NSString *)description {
-  return [NSString stringWithFormat:@"<%@: %p; sourceIdentifier = %@; exaggeration = %.2f>",
+  return [NSString stringWithFormat:@"<%@: %p; sourceIdentifier = \"%@\"; exaggeration = %g>",
                                     NSStringFromClass([self class]), (void *)self,
                                     self.sourceIdentifier, self.exaggeration];
 }

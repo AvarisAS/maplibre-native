@@ -203,7 +203,7 @@ private:
 
 public:
     uint32_t currentLayer;
-    float depthRangeSize;
+    float depthRangeSize = 1.0f;
 
     /// Avaris: the depth buffer of the pass being drawn is reversed (near 1, far 0, greater is
     /// nearer): the main pass on Metal while there is terrain. With the near plane at 1 px, the
@@ -214,6 +214,7 @@ public:
     /// through depthModeFor3D() must project with matrix::reverseUnitClipZ while this is set
     /// (the terrain mesh, sea-level drawables and fill extrusions do). Offscreen targets (the
     /// drape, the terrain depth pass that symbols read) keep the usual depth.
+    /// While set, depthModeFor3D() has the range {0, 1} and depthModeForSublayer() is disabled.
     bool reversedDepth = false;
 
     /// A sea-level drawable (`*-elevation-reference: sea`) is drawn this much nearer in reversed
@@ -225,11 +226,7 @@ public:
     const uint64_t frameCount;
 
     static constexpr int numSublayers = 3;
-#if MLN_RENDER_BACKEND_OPENGL
     static constexpr float depthEpsilon = 1.0f / (1 << 16);
-#else
-    static constexpr float depthEpsilon = 1.0f / (1 << 11);
-#endif
     static constexpr int maxStencilValue = 255;
 
     double tileLodMinRadius;

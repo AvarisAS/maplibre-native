@@ -37,7 +37,7 @@ struct alignas(16) CircleDrawableUBO {
     /* 144 */ float dem_dim;
     /* 148 */ float dem_exaggeration;
     /* 152 */ float dem_enabled;
-    /* 156 */ float pad4;
+    /* 156 */ float depth_enabled;
     /* 160 */
 };
 static_assert(sizeof(CircleDrawableUBO) == 10 * 16, "wrong size");
@@ -69,7 +69,7 @@ struct ShaderSource<BuiltIn::CircleShader, gfx::Backend::Type::Metal> {
 
     static const std::array<AttributeInfo, 8> attributes;
     static constexpr std::array<AttributeInfo, 0> instanceAttributes{};
-    static const std::array<TextureInfo, 1> textures;
+    static const std::array<TextureInfo, 2> textures;
 
     static constexpr auto prelude = circleShaderPrelude;
     static constexpr auto source = R"(
@@ -104,7 +104,7 @@ struct FragmentStage {
     float4 position [[position, invariant]];
     float2 extrude;
     float antialiasblur;
-    half visibility;
+    float visibility;
 
 #if !defined(HAS_UNIFORM_u_color)
     half4 color;
@@ -135,7 +135,9 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
                                 device const CircleDrawableUBO* drawableVector [[buffer(idCircleDrawableUBO)]],
                                 device const CircleEvaluatedPropsUBO& props [[buffer(idCircleEvaluatedPropsUBO)]],
                                 texture2d<float, access::sample> demTexture [[texture(0)]],
-                                sampler demSampler [[sampler(0)]]) {
+                                sampler demSampler [[sampler(0)]],
+                                texture2d<float, access::sample> depthTexture [[texture(1)]],
+                                sampler depthSampler [[sampler(1)]]) {
 
     device const CircleDrawableUBO& drawable = drawableVector[uboIndex];
 
@@ -164,20 +166,24 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
                                     drawable.dem_unpack,
                                     drawable.dem_dim,
                                     drawable.dem_exaggeration,
-                                    drawable.dem_enabled == 1.0 ? 1.0 : 0.0);
+                                    drawable.dem_enabled);
 
-    // Avaris: a circle at sea level (`circle-elevation-reference: sea`, dem_enabled == 2) is a
-    // mark, as a symbol is: land in front of its centre hides the whole of it, and nothing else
-    // cuts it. Its quad faces the screen at the centre's depth, so a per-fragment depth test
-    // against the ground under it would take the lower half over shallow water and leave the
-    // upper half over low land. The texture bound in the DEM slot is then the terrain's packed
-    // depth, and the matrix a reversed [0, 1] clip z (z' = w - z): back to GL's z for the test.
-    float visibility = 1.0;
-    if (drawable.dem_enabled == 2.0) {
-        const float4 c = drawable.matrix * float4(circle_center, 0, 1);
-        visibility = calculate_visibility(float4(c.xy, c.w - 2.0 * c.z, c.w), demTexture, demSampler, 1.0,
-                                          paintParams.camera_to_center_distance);
+    // Hidden where the terrain covers the circle's centre, as maplibre-gl-js does (and as symbols are).
+    // Avaris: a circle at sea level (`circle-elevation-reference: sea`) is a mark, as a symbol
+    // is: land in front of its centre hides the whole of it, and nothing else cuts it. Its quad
+    // faces the screen at the centre's depth, so a per-fragment depth test against the ground
+    // under it would take the lower half over shallow water and leave the upper half over low
+    // land. depth_enabled == 2: its matrix has a reversed [0, 1] clip z (z' = w - z), turned
+    // back to GL's z here, which is what the packed terrain depth holds.
+    float4 centre = drawable.matrix * float4(circle_center, ele, 1);
+    if (drawable.depth_enabled == 2.0) {
+        centre.z = centre.w - 2.0 * centre.z;
     }
+    const float visibility = calculate_visibility(centre,
+                                                  depthTexture,
+                                                  depthSampler,
+                                                  drawable.depth_enabled,
+                                                  paintParams.units_to_pixels.y);
 
     float4 position;
     if (props.pitch_with_map) {
@@ -210,7 +216,7 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
         .position       = position,
         .extrude        = extrude,
         .antialiasblur  = antialiasblur,
-        .visibility     = half(visibility),
+        .visibility     = visibility,
 
 #if !defined(HAS_UNIFORM_u_color)
         .color          = half4(unpack_mix_color(vertx.color, drawable.color_t)),

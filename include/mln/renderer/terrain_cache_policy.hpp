@@ -1,17 +1,32 @@
 #pragma once
 
+#include <mln/tile/tile_id.hpp>
+#include <mln/util/hash.hpp>
+
+#include <algorithm>
+#include <cstddef>
 #include <cstdint>
+#include <memory>
+#include <optional>
 #include <vector>
 
 namespace mln {
+
+namespace gfx {
+class Texture2D;
+} // namespace gfx
+
 namespace terrain {
 
-/// The DEM a terrain mesh drawable was built on.
+/// What a terrain mesh drawable was built on: the DEM it samples, and the drape texture it draws.
 struct DEMBinding {
     /// 0 = flat placeholder, 1 = closest loaded ancestor DEM, 2 = the tile's own DEM
     uint8_t tier = 0;
     /// Zoom of the bound DEM tile (-1 for the placeholder)
     int8_t demZoom = -1;
+    /// The drape texture the drawable was built with. Held, not just compared: a freed texture's
+    /// address must never be taken for a new texture's.
+    std::shared_ptr<gfx::Texture2D> drapeTexture{};
 };
 
 /// Whether a terrain drawable built on `current` should be rebuilt now that `available` could be
@@ -26,6 +41,26 @@ inline bool shouldRebind(const DEMBinding& current, const DEMBinding& available)
         return available.tier > current.tier;
     }
     return available.tier == 1 && available.demZoom > current.demZoom;
+}
+
+/// Whether a terrain drawable built on `built` must be rebuilt because its tile's drape target now
+/// has the texture `current`. A drawable binds its drape texture once, when it is created; the
+/// drape pool replaces a tile's target (and so its texture) when the tile changes drape size, and
+/// nothing bakes the old texture any more, so a drawable left alone would show it frozen. No
+/// target, or a drawable built before it had a texture, is no change.
+inline bool drapeTextureReplaced(const DEMBinding& built, const gfx::Texture2D* current) {
+    return current && built.drapeTexture && built.drapeTexture.get() != current;
+}
+
+/// How many drape targets that already hold a bake may re-render this frame: the load mode's cap
+/// (`cap` <= 0 is unlimited) less the `replaced` targets, which the pool made anew this frame and
+/// which bake at once on their new textures. One cap then governs both, instead of a frame
+/// baking up to twice the cap.
+inline int drapeRerenderBudget(int cap, std::size_t replaced) {
+    if (cap <= 0) {
+        return 1 << 30;
+    }
+    return std::max(cap - static_cast<int>(replaced), 0);
 }
 
 /// How one draped layer group covers a drape target.
@@ -67,6 +102,92 @@ inline bool drapeFallbackStrictlyWorse(const std::vector<DrapeGroupFallback>& no
     }
     return worse;
 }
+
+/// Whether the style revision of a draped layer group differs between what a drape target would
+/// render now and what it baked. A revision of 0 means the group has none or covers nothing there,
+/// and is not a change: a layer whose tiles dropped out of the cover is a drop-out, which the
+/// drape cache rides out, not a new look.
+inline bool drapeRevisionChanged(const std::vector<std::size_t>& now, const std::vector<std::size_t>& baked) {
+    if (now.size() != baked.size()) {
+        return true;
+    }
+    for (std::size_t i = 0; i < now.size(); ++i) {
+        if (now[i] != 0 && baked[i] != 0 && now[i] != baked[i]) {
+            return true;
+        }
+    }
+    return false;
+}
+
+/// What one draped layer group would render into a drape target, gathered tile by tile from the
+/// tiles the group draws on and the tiles its layer has no data on. Tiles that do not overlap the
+/// target are ignored.
+///
+/// `contentHash` identifies the content, so the drape re-renders when it changes. It is keyed on
+/// the tiles and the data drawn on them, NOT on drawable instances: those are rebuilt with fresh
+/// ids on every bucket update and fade transition, and a drawable-id hash churned every frame
+/// while panning and re-rendered every drape (~4x overdraw). Summed, so the order tiles are added
+/// in does not matter. Matches maplibre-gl-js, which keys its terrain render cache on tile coverage.
+///
+/// `fallback` tells drapeFallbackStrictlyWorse whether the content got worse. A tile the layer has
+/// no data on is content, empty content: a GeoJSON source updated to have no features there must
+/// clear the drape too. A tile neither drawn nor empty - still loading, or with its drawables
+/// deferred by the tile build budget - is missing, and meanwhile the drape keeps its bake.
+class DrapeGroupCoverage {
+public:
+    DrapeGroupCoverage(const UnwrappedTileID& target_, int32_t layerIndex_)
+        : target(target_),
+          layerIndex(layerIndex_) {}
+
+    /// A tile the group draws on, once per drawable. `dataID` identifies the data drawn there (the
+    /// source bucket's id, 0 when unknown), so new data under the same tile - a GeoJSON source
+    /// updated with setGeoJson - is new content.
+    void addDrawn(const UnwrappedTileID& tile, std::size_t dataID) { add(tile, /*drawn=*/true, dataID); }
+
+    /// A tile the group's layer covers but has no data on
+    void addEmpty(const UnwrappedTileID& tile) { add(tile, /*drawn=*/false, 0); }
+
+    std::size_t contentHash() const { return hash; }
+
+    DrapeGroupFallback fallback() const {
+        // Only the coarsest standalone fallback counts as lost detail; when an exact or deeper
+        // tile is present the ancestor is clipped away by the tile masks and costs nothing.
+        if (exactOrDescendant) {
+            return {.layerIndex = layerIndex, .deficit = 0};
+        }
+        if (bestAncestorZoom) {
+            return {.layerIndex = layerIndex, .deficit = static_cast<int16_t>(target.canonical.z - *bestAncestorZoom)};
+        }
+        return {.layerIndex = layerIndex, .deficit = -1};
+    }
+
+private:
+    void add(const UnwrappedTileID& tile, bool drawn, std::size_t dataID) {
+        if (tile == target || tile.isChildOf(target)) {
+            exactOrDescendant = true;
+        } else if (target.isChildOf(tile)) {
+            if (!bestAncestorZoom || tile.canonical.z > *bestAncestorZoom) {
+                bestAncestorZoom = tile.canonical.z;
+            }
+        } else {
+            return;
+        }
+        std::size_t tileHash = 0;
+        util::hash_combine(tileHash, tile.wrap);
+        util::hash_combine(tileHash, tile.canonical.z);
+        util::hash_combine(tileHash, tile.canonical.x);
+        util::hash_combine(tileHash, tile.canonical.y);
+        util::hash_combine(tileHash, drawn);
+        util::hash_combine(tileHash, dataID);
+        hash += tileHash;
+    }
+
+    UnwrappedTileID target;
+    int32_t layerIndex;
+    bool exactOrDescendant = false;
+    std::optional<uint8_t> bestAncestorZoom;
+    std::size_t hash = 0;
+};
 
 } // namespace terrain
 } // namespace mln

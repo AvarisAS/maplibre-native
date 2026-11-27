@@ -19,9 +19,13 @@ enum {
 struct alignas(16) TerrainDrawableUBO {
     /*  0 */ float4x4 matrix;
     /* 64 */ float4 dem_coords;
-    /* 80 */
+    /* 80 */ float skirt_edges; // edges with a neighbor tile: north 1, east 2, south 4, west 8
+    /* 84 */ float pad1;
+    /* 88 */ float pad2;
+    /* 92 */ float pad3;
+    /* 96 */
 };
-static_assert(sizeof(TerrainDrawableUBO) == 5 * 16, "wrong size");
+static_assert(sizeof(TerrainDrawableUBO) == 6 * 16, "wrong size");
 
 struct alignas(16) TerrainTilePropsUBO {
     /*  0 */ float2 dem_tl;
@@ -36,17 +40,26 @@ struct alignas(16) TerrainEvaluatedPropsUBO {
     /*  0 */ float4 unpack; // DEM unpack vector for the source's encoding
     /* 16 */ float exaggeration;
     /* 20 */ float elevation_offset;
-    /* 24 */ float fog_near;
-    /* 28 */ float fog_far;
-    /* 32 */ float4 fog_color;
-    /* 48 */ float4 horizon_color;
-    /* 64 */ float fog_ground_blend;
-    /* 68 */ float horizon_fog_blend;
-    /* 72 */ float fog_ground_blend_opacity;
-    /* 76 */ float pad1;
-    /* 80 */
+    /* 24 */ float pad1;
+    /* 28 */ float pad2;
+    /* 32 */ float4 haze_color; // distance haze, premultiplied; clear when there is none
+    /* 48 */ float2 haze_ramp;  // haze = clamp(x - y / view depth, 0, 1)^2
+    /* 56 */ float pad3;
+    /* 60 */ float pad4;
+    // Sky fog (TerrainEvaluatedPropsUBO in terrain_layer_ubo.hpp)
+    /* 64 */ float fog_near;
+    /* 68 */ float fog_far;
+    /* 72 */ float fog_ground_blend;
+    /* 76 */ float horizon_fog_blend;
+    /* 80 */ float4 fog_color;
+    /* 96 */ float4 horizon_color;
+    /* 112 */ float fog_ground_blend_opacity;
+    /* 116 */ float pad5;
+    /* 120 */ float pad6;
+    /* 124 */ float pad7;
+    /* 128 */
 };
-static_assert(sizeof(TerrainEvaluatedPropsUBO) == 80, "wrong size");
+static_assert(sizeof(TerrainEvaluatedPropsUBO) == 128, "wrong size");
 
 )";
 
@@ -72,6 +85,7 @@ struct FragmentStage {
     float2 uv;
     float elevation;
     float fog_depth;
+    float depth; // view depth, for the distance haze
 };
 
 FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
@@ -97,8 +111,12 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
 
     // Skirt vertices hang below the surface by elevation_offset, forming a curtain
     // that hides the cracks between neighbouring tiles at different zoom levels
-    // (maplibre-gl-js u_ele_delta). pos.z carries the skirt flag.
-    const float ele_delta = (float(vertx.pos.z) == 1.0) ? props.elevation_offset : 0.0;
+    // (maplibre-gl-js u_ele_delta). pos.z carries the skirt flag. A skirt vertex on an edge with no
+    // neighbor tile stays on the surface, so a corner hangs only where both of its edges have one.
+    const int edges = int(drawable.skirt_edges);
+    const bool bare = (pos.y == 0.0 && (edges & 1) == 0) || (pos.x == 8192.0 && (edges & 2) == 0) ||
+                      (pos.y == 8192.0 && (edges & 4) == 0) || (pos.x == 0.0 && (edges & 8) == 0);
+    const float ele_delta = (float(vertx.pos.z) == 1.0 && !bare) ? props.elevation_offset : 0.0;
     float4 position = drawable.matrix * float4(pos.x, pos.y, elevation - ele_delta, 1.0);
 
     // Fog depth as maplibre-gl-js terrain.vertex computes it with u_fog_matrix: the same view
@@ -114,6 +132,7 @@ FragmentStage vertex vertexMain(thread const VertexStage vertx [[stage_in]],
         .uv        = uv,
         .elevation = elevation,
         .fog_depth = fog_depth,
+        .depth     = position.w,
     };
 }
 
@@ -131,12 +150,19 @@ half4 fragment fragmentMain(FragmentStage in [[stage_in]],
     // 1.0 - uv.y. Metal's NDC is Y-up, so the RTT is stored upright and the V must NOT
     // be flipped here - sampling 1.0 - uv.y flips the draped map vertically (north/south
     // swapped about the view). Sample uv.y directly on Metal.
-    const float4 surface_color = mapTexture.sample(mapSampler, float2(in.uv.x, in.uv.y));
+    float4 color = mapTexture.sample(mapSampler, float2(in.uv.x, in.uv.y));
+
+    // Distance haze: past where it begins the ground fades toward the haze color, as gl-js's terrain fog
+    // does, to the full color (its alpha) where it ends (the ramp is TerrainLayerTweaker's). A zero
+    // ramp leaves the drape as it is.
+    float haze = clamp(props.haze_ramp.x - props.haze_ramp.y / max(in.depth, 1e-6), 0.0, 1.0);
+    haze *= haze;
+    color.rgb = color.rgb * (1.0 - props.haze_color.a * haze) + props.haze_color.rgb * (color.a * haze);
 
     // The sky's fog, blended in linear space as maplibre-gl-js terrain.fragment does.
     if (props.fog_ground_blend_opacity > 0.0 && in.fog_depth > props.fog_ground_blend) {
         const float gamma = 2.2;
-        const float4 surface_linear = pow(max(surface_color, 0.0), float4(gamma));
+        const float4 surface_linear = pow(max(color, 0.0), float4(gamma));
         const float blend_color = smoothstep(0.0, 1.0, max((in.fog_depth - props.horizon_fog_blend) /
                                                            (1.0 - props.horizon_fog_blend), 0.0));
         const float4 fog_horizon_linear = mix(pow(props.fog_color, float4(gamma)),
@@ -145,7 +171,7 @@ half4 fragment fragmentMain(FragmentStage in [[stage_in]],
         return half4(pow(mix(surface_linear, fog_horizon_linear,
                              pow(factor_fog, 2.0) * props.fog_ground_blend_opacity), float4(1.0 / gamma)));
     }
-    return half4(surface_color);
+    return half4(color);
 }
 )";
 };

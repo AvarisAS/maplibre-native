@@ -8,6 +8,7 @@
 #include <mln/math/log2.hpp>
 #include <mln/renderer/renderer_frontend.hpp>
 #include <mln/renderer/renderer_observer.hpp>
+#include <mln/renderer/terrain_elevation_index.hpp>
 #include <mln/renderer/update_parameters.hpp>
 #include <mln/storage/file_source_manager.hpp>
 #include <mln/storage/resource.hpp>
@@ -154,6 +155,10 @@ void Map::jumpTo(const CameraOptions& camera) {
 
 void Map::easeTo(const CameraOptions& camera, const AnimationOptions& animation) {
     impl->cameraMutated = true;
+    // A gesture's step is a non-animated one; an animation goes somewhere else.
+    if (animation.duration && *animation.duration > Duration::zero()) {
+        impl->forgetEyeElevation();
+    }
     impl->noteCameraSet();
     impl->settleCenterAwaitingSeaLevel();
     impl->transform.easeTo(camera, animation);
@@ -162,6 +167,10 @@ void Map::easeTo(const CameraOptions& camera, const AnimationOptions& animation)
 
 void Map::flyTo(const CameraOptions& camera, const AnimationOptions& animation) {
     impl->cameraMutated = true;
+    // A gesture's step is a non-animated one; an animation goes somewhere else.
+    if (animation.duration && *animation.duration > Duration::zero()) {
+        impl->forgetEyeElevation();
+    }
     impl->noteCameraSet();
     impl->settleCenterAwaitingSeaLevel();
     impl->transform.flyTo(camera, animation);
@@ -434,12 +443,7 @@ ProjectionMode Map::getProjectionMode() const {
 // MARK: - Projection
 
 ScreenCoordinate Map::pixelForLatLng(const LatLng& latLng) const {
-    // If the center and point longitudes are not in the same side of the
-    // antimeridian, we unwrap the point longitude so it would be seen if
-    // e.g. the next antimeridian side is visible.
-    LatLng unwrappedLatLng = latLng.wrapped();
-    unwrappedLatLng.unwrapForShortestPath(impl->transform.getLatLng());
-    return impl->transform.latLngToScreenCoordinate(unwrappedLatLng);
+    return impl->transform.latLngToScreenCoordinate(impl->transform.getState().latLngNearCenter(latLng));
 }
 
 ScreenCoordinate Map::pixelForLatLng(const LatLng& latLng, double elevationMeters) const {
@@ -454,6 +458,10 @@ LatLng Map::latLngForPixel(const ScreenCoordinate& pixel, LatLng::WrapMode wrapM
 
 LatLng Map::latLngForPixel(const ScreenCoordinate& pixel, double elevationMeters) const {
     return impl->transform.screenCoordinateToLatLng(pixel, elevationMeters);
+}
+
+LatLng Map::latLngForPixelAtCenterAltitude(const ScreenCoordinate& pixel) const {
+    return latLngForPixel(pixel, impl->transform.getState().getCenterAltitude());
 }
 
 std::vector<ScreenCoordinate> Map::pixelsForLatLngs(const std::vector<LatLng>& latLngs) const {
@@ -471,6 +479,56 @@ std::vector<LatLng> Map::latLngsForPixels(const std::vector<ScreenCoordinate>& s
     ret.reserve(screenCoords.size());
     for (const auto& point : screenCoords) {
         ret.emplace_back(latLngForPixel(point, wrapMode));
+    }
+    return ret;
+}
+
+std::optional<double> Map::getTerrainElevation(const LatLng& latLng) const {
+    if (!impl->terrainElevationIndex) {
+        return std::nullopt;
+    }
+    return impl->terrainElevationIndex->getElevation(latLng);
+}
+
+ScreenCoordinate Map::pixelForLatLngOnTerrain(const LatLng& latLng) const {
+    // Look the height up at the longitude pixelForLatLng projects, unwrapped for the shortest path
+    // to the centre: near the antimeridian the drawn DEM tiles have wrap != 0, and the index keys
+    // them by unwrapped x
+    LatLng unwrapped = latLng.wrapped();
+    unwrapped.unwrapForShortestPath(impl->transform.getLatLng());
+    if (const auto elevation = getTerrainElevation(unwrapped)) {
+        return pixelForLatLng(unwrapped, *elevation);
+    }
+    return pixelForLatLng(latLng);
+}
+
+LatLng Map::latLngForPixelOnTerrain(const ScreenCoordinate& pixel) const {
+    if (const auto& index = impl->terrainElevationIndex) {
+        if (const auto surface = pickTerrainSurface(
+                impl->transform.getState(),
+                pixel,
+                [&](const LatLng& latLng) { return index->getElevation(latLng); },
+                index->getMaxElevation())) {
+            return *surface;
+        }
+    }
+    return latLngForPixel(pixel);
+}
+
+std::vector<ScreenCoordinate> Map::pixelsForLatLngsOnTerrain(const std::vector<LatLng>& latLngs) const {
+    std::vector<ScreenCoordinate> ret;
+    ret.reserve(latLngs.size());
+    for (const auto& latLng : latLngs) {
+        ret.emplace_back(pixelForLatLngOnTerrain(latLng));
+    }
+    return ret;
+}
+
+std::vector<LatLng> Map::latLngsForPixelsOnTerrain(const std::vector<ScreenCoordinate>& screenCoords) const {
+    std::vector<LatLng> ret;
+    ret.reserve(screenCoords.size());
+    for (const auto& point : screenCoords) {
+        ret.emplace_back(latLngForPixelOnTerrain(point));
     }
     return ret;
 }
@@ -649,6 +707,22 @@ TerrainSkirtLength Map::getTerrainSkirtLength() const {
     return impl->terrainSkirtLength;
 }
 
+void Map::setTerrainHaze(const Color& color, float range) {
+    const float clamped = range > 1.0f ? std::min(range, 1000.0f) : 0.0f; // NaN turns it off too
+    if (impl->terrainHazeColor == color && impl->terrainHazeRange == clamped) return;
+    impl->terrainHazeColor = color;
+    impl->terrainHazeRange = clamped;
+    impl->onUpdate();
+}
+
+Color Map::getTerrainHazeColor() const {
+    return impl->terrainHazeColor;
+}
+
+float Map::getTerrainHazeRange() const {
+    return impl->terrainHazeRange;
+}
+
 void Map::anchorCenterOnTerrain() {
     impl->anchorCenterOnTerrain();
 }
@@ -667,6 +741,7 @@ bool Map::setCenterAltitudeKeepingView(double altitudeMeters) {
 
 void Map::setCenterClampedToGround(bool clamped) {
     impl->centerClampedToGround = clamped;
+    impl->forgetEyeElevation();
 }
 
 bool Map::getCenterClampedToGround() const {

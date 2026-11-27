@@ -54,6 +54,18 @@ public:
         }
 #endif
 
+        // Neither depth nor stencil is loaded from or stored to memory: depth is cleared when a pass begins and
+        // the stencil starts undefined until the clip masks write it. A tile-based GPU needs no memory behind them.
+        if (context.getBackend().isMemorylessTextureSupported()) {
+            for (const auto& texture : {depthTexture, stencilTexture}) {
+                if (texture) {
+                    auto& attachment = static_cast<Texture2D&>(*texture);
+                    attachment.setUsage(MTL::TextureUsageRenderTarget);
+                    attachment.setStorageMode(MTL::StorageModeMemoryless);
+                }
+            }
+        }
+
         context.renderingStats().numFrameBuffers++;
     }
 
@@ -102,6 +114,15 @@ public:
         }
     }
 
+    void setMipmapped(bool mipmapped_, uint8_t maxAnisotropy) {
+        mipmapped = mipmapped_;
+        colorTexture->setSamplerConfiguration({.filter = gfx::TextureFilterType::Linear,
+                                               .wrapU = gfx::TextureWrapType::Clamp,
+                                               .wrapV = gfx::TextureWrapType::Clamp,
+                                               .maxAnisotropy = mipmapped ? maxAnisotropy : uint8_t{1},
+                                               .mipmapped = mipmapped});
+    }
+
     void swap() override {
         assert(commandBuffer);
         // No wait here: the passes that sample this texture are encoded into later command buffers
@@ -110,6 +131,15 @@ public:
         // a pitched terrain map every drape target re-rendered in a frame, ~20 a frame while
         // rotating, which held the frame rate near 12 fps with the GPU busy 40 % of the time.
         // Only a CPU read-back (readStillImage) needs the GPU to have finished.
+        if (mipmapped) {
+            // The render pass that drew into the texture has ended; rebuild the chain from it before the
+            // buffer is committed. swap() runs once per render of the texture, not once per frame.
+            if (auto* blit = commandBuffer->blitCommandEncoder()) {
+                blit->generateMipmaps(static_cast<Texture2D*>(colorTexture.get())->getMetalTexture());
+                blit->endEncoding();
+                context.renderingStats().numMipmapChainsBuilt++;
+            }
+        }
         commandBuffer->commit();
         lastCommitted = commandBuffer;
         commandBuffer.reset();
@@ -117,10 +147,14 @@ public:
     }
 
     PremultipliedImage readStillImage() {
+        assert(static_cast<Texture2D*>(colorTexture.get())->getMetalTexture());
+
+        // Wait for the last pass committed on this texture. Metal tracks the texture, so the passes that
+        // wrote it before that one have finished too.
         if (lastCommitted) {
             lastCommitted->waitUntilCompleted();
+            lastCommitted.reset();
         }
-        assert(static_cast<Texture2D*>(colorTexture.get())->getMetalTexture());
 
         auto data = std::make_unique<uint8_t[]>(colorTexture->getDataSize());
         MTL::Region region = MTL::Region::Make2D(0, 0, size.width, size.height);
@@ -153,6 +187,7 @@ private:
     Context& context;
     const Size size;
     const gfx::TextureChannelDataType type;
+    bool mipmapped = false;
     gfx::Texture2DPtr colorTexture;
     gfx::Texture2DPtr depthTexture;
     gfx::Texture2DPtr stencilTexture;
@@ -173,6 +208,10 @@ bool OffscreenTexture::isRenderable() {
 
 PremultipliedImage OffscreenTexture::readStillImage() {
     return getResource<OffscreenTextureResource>().readStillImage();
+}
+
+void OffscreenTexture::setMipmapped(bool mipmapped, uint8_t maxAnisotropy) {
+    getResource<OffscreenTextureResource>().setMipmapped(mipmapped, maxAnisotropy);
 }
 
 const gfx::Texture2DPtr& OffscreenTexture::getTexture() {

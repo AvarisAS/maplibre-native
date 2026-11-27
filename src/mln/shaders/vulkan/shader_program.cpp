@@ -149,21 +149,16 @@ const vk::UniquePipeline& ShaderProgram::getPipeline(const PipelineInfo& pipelin
 
     const auto inputAssemblyState = vk::PipelineInputAssemblyStateCreateInfo().setTopology(pipelineInfo.topology);
 
-    const auto renderableExtent = pipelineInfo.viewExtent;
-
-    const vk::Viewport viewportExtent(0.0f, 0.0f, renderableExtent.width, renderableExtent.height, 0.0f, 1.0f);
-    const vk::Rect2D scissorRect({}, {renderableExtent.width, renderableExtent.height});
-
-    const auto viewportState = vk::PipelineViewportStateCreateInfo()
-                                   .setViewportCount(1)
-                                   .setPViewports(&viewportExtent)
-                                   .setScissorCount(1)
-                                   .setPScissors(&scissorRect);
+    const auto viewportState = vk::PipelineViewportStateCreateInfo().setViewportCount(1).setScissorCount(1);
 
     const auto rasterState = vk::PipelineRasterizationStateCreateInfo()
                                  .setCullMode(pipelineInfo.cullMode)
                                  .setFrontFace(pipelineInfo.frontFace)
                                  .setPolygonMode(pipelineInfo.polygonMode)
+                                 .setDepthBiasEnable(pipelineInfo.depthBiasSlope != 0.0f)
+                                 .setDepthBiasConstantFactor(0.0f)
+                                 .setDepthBiasClamp(0.0f)
+                                 .setDepthBiasSlopeFactor(pipelineInfo.depthBiasSlope)
                                  .setLineWidth(1.0f);
 
     const auto multisampleState = vk::PipelineMultisampleStateCreateInfo().setRasterizationSamples(

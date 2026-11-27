@@ -149,7 +149,11 @@ UniqueShaderProgram Context::createProgram(shaders::BuiltIn shaderID,
     // Allows use of the [[invariant]] attribute on position outputs to
     // guarantee that the GPU performs the calculations the same way.
     // requires a check for iOS 14+
-    // options->setPreserveInvariance(true);
+#if MLN_WITH_PLUGINS
+    // Multi-pass plugin layers rely on it: a depth-only pass and a color pass of the
+    // same geometry come from separately compiled shaders.
+    options->setPreserveInvariance(true);
+#endif
 
     // TODO: Allow use of `LibraryOptimizationLevelSize` which "may also reduce compile time"
     // requires a check for iOS 16+
@@ -330,8 +334,8 @@ const auto clipMaskStencilMode = gfx::StencilMode{
     .depthFail = gfx::StencilOpType::Keep,
     .pass = gfx::StencilOpType::Replace,
 };
-const auto clipMaskDepthMode = gfx::DepthMode{.func = gfx::DepthFunctionType::Always,
-                                              .mask = gfx::DepthMaskType::ReadOnly};
+const auto clipMaskDepthMode = gfx::DepthMode{
+    .func = gfx::DepthFunctionType::Always, .mask = gfx::DepthMaskType::ReadOnly, .range = {0.0f, 1.0f}};
 } // namespace
 
 bool Context::renderTileClippingMasks(gfx::RenderPass& renderPass,

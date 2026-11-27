@@ -65,6 +65,7 @@ public:
     void onWillStartRenderingMap() final;
     void onDidFinishRenderingMap() final;
     void onTerrainCenterElevationChanged(double elevationMeters) final;
+    void onTerrainElevationIndexChanged(std::shared_ptr<const TerrainElevationIndex>) final;
     void onTerrainEyeElevationChanged(double elevationMeters) final;
     void onTerrainMinElevationChanged(double elevationMeters) final;
     void onTerrainTransitionTargetElevationChanged(double elevationMeters) final;
@@ -116,6 +117,13 @@ public:
     bool loading = false;
     bool rendererFullyLoaded;
     std::unique_ptr<StillImageRequest> stillImageRequest;
+    /// The center's height in the camera the renderer was last given, and in the frame being drawn.
+    /// In still mode the terrain clamp moves the center during the frame that reports the ground
+    /// under it, after that frame's camera was taken; the still image then waits for a frame drawn
+    /// from the moved one.
+    double renderedCenterAltitude = 0.0;
+    double frameCenterAltitude = 0.0;
+    int stillFramesForCenterClamp = 0;
 
     double tileLodMinRadius = 3;
     double tileLodScale = 1;
@@ -124,19 +132,33 @@ public:
     TileLodMode tileLodMode = TileLodMode::Default;
     TerrainLoadMode terrainLoadMode = TerrainLoadMode::Quality;
     TerrainSkirtLength terrainSkirtLength = TerrainSkirtLength::Auto;
+    Color terrainHazeColor;
+    float terrainHazeRange = 0.0f;
     /// Off by default. Opt in with Map::setCenterClampedToGround. A gesture holds the center's
     /// height, and its end anchors the center on the ground keeping the view, the way GL JS's
     /// elevationFreeze and recalculateZoomAndCenter do.
     bool centerClampedToGround = false;
     /// Terrain height under the centre, as the renderer last reported it (NaN until then).
     double terrainCenterElevation = std::numeric_limits<double>::quiet_NaN();
+    /// The renderer told the map the ground under the center is no longer known (NaN), as against
+    /// not having told it anything yet.
+    bool centerGroundLost = false;
     /// Terrain height under the camera's eye, as the renderer last reported it (NaN until then).
     double terrainEyeElevation = std::numeric_limits<double>::quiet_NaN();
+    /// The last height reported under the eye, kept while the renderer reports that the ground
+    /// under it is not known. A pan into ground whose tile is still on the way would otherwise let
+    /// the camera down onto the ground under the center, and the eye into the mountain, until the
+    /// tile arrives. Forgotten when the camera is set elsewhere, and with the terrain or the clamp.
+    double lastKnownEyeElevation = std::numeric_limits<double>::quiet_NaN();
+    void forgetEyeElevation();
     /// How far above the ground under it the eye is kept, in meters.
     static constexpr double eyeClearanceMeters = 10.0;
     /// The lowest height the center can be at with the eye `eyeClearanceMeters` above the ground
-    /// under it; -infinity until the renderer has reported that ground.
+    /// under it, as last reported; -infinity until the renderer has reported that ground.
     double eyeClearCenterAltitude() const;
+    /// Raises the center so the eye is `eyeClearanceMeters` over the ground the map holds under it,
+    /// as the camera is now. Inert where that ground is not loaded.
+    void keepEyeAboveGround();
     /// The height the clamp puts the center at: the ground under it, or higher when the eye
     /// would otherwise sit under the ground under the eye.
     double clampedCenterAltitude() const;
@@ -199,6 +221,9 @@ public:
     /// Moves the centre altitude to `elevationMeters` keeping lng/lat; false when the change
     /// is under the sub-metre threshold.
     bool clampCenterToTerrain(double elevationMeters);
+    /// The renderer's terrain heights, copied for this side (onTerrainElevationIndexChanged); null
+    /// without terrain. Map's terrain projection reads it so it never waits on the renderer.
+    std::shared_ptr<const TerrainElevationIndex> terrainElevationIndex;
     bool debugAboveGroundLog = false;
 };
 

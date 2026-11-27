@@ -56,10 +56,12 @@
 #include <mln/gfx/vertex_attribute.hpp> // VertexAttributeArray for the a_instance attribute
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstring>
 #include <functional>
 #include <iomanip>
+#include <numbers>
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
@@ -86,11 +88,43 @@ double tileCentreDistance2(const UnwrappedTileID& id, const std::array<double, 2
     return dx * dx + dy * dy;
 }
 
+// Whether tile `a` lies nearer `origin` than `b`. Ties go by tile ID, so the same view keeps the
+// same tiles from one call to the next.
+bool nearerTo(const std::array<double, 2>& origin, const UnwrappedTileID& a, const UnwrappedTileID& b) {
+    const double da = tileCentreDistance2(a, origin);
+    const double db = tileCentreDistance2(b, origin);
+    return da < db || (da == db && a < b);
+}
+
 DEMSubTileOffset demSubTileOffset(const CanonicalTileID& child, const CanonicalTileID& ancestor) {
     const int dz = child.z - ancestor.z;
     return {.scale = static_cast<float>(1u << dz),
             .dx = static_cast<float>(child.x - (ancestor.x << dz)),
             .dy = static_cast<float>(child.y - (ancestor.y << dz))};
+}
+
+/// Bilinear interpolation of a DEM tile's texels at a point given in a (possibly descendant) tile's
+/// local space, as maplibre-gl-js Terrain.getDEMElevation. Unexaggerated metres.
+/// Pixel i holds the height of its cell, centred at (i + 0.5) / dim, where hillshade and
+/// color-relief draw it (gl-js #8420), so a point maps to pixel coordinate uv * dim - 0.5.
+/// Within half a pixel of the tile's edge that reaches into the backfilled border.
+float sampleDEM(const DEMData& demData, const DEMSubTileOffset& off, float x, float y) {
+    const float xInDem = (off.dx * util::EXTENT + x) / off.scale;
+    const float yInDem = (off.dy * util::EXTENT + y) / off.scale;
+    const auto dim = static_cast<float>(demData.dim);
+    const float px = util::clamp(xInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
+    const float py = util::clamp(yInDem / util::EXTENT * dim - 0.5f, -0.5f, dim - 0.5f);
+    const auto x0 = static_cast<int32_t>(std::floor(px));
+    const auto y0 = static_cast<int32_t>(std::floor(py));
+    const float fx = px - static_cast<float>(x0);
+    const float fy = py - static_cast<float>(y0);
+    const auto tl = static_cast<float>(demData.get(x0, y0));
+    const auto tr = static_cast<float>(demData.get(x0 + 1, y0));
+    const auto bl = static_cast<float>(demData.get(x0, y0 + 1));
+    const auto br = static_cast<float>(demData.get(x0 + 1, y0 + 1));
+    const float top = tl + (tr - tl) * fx;
+    const float bottom = bl + (br - bl) * fx;
+    return top + (bottom - top) * fy;
 }
 
 /// Every DEM tile the source currently holds with decoded data - rendered ones and the
@@ -102,6 +136,7 @@ struct LoadedDEMTile {
 
 std::vector<LoadedDEMTile> loadedDEMTiles(const RenderSource* demSource) {
     std::vector<LoadedDEMTile> out;
+    std::unordered_set<UnwrappedTileID> seen;
     // Core builds without RTTI; a raster-dem render source is always a RenderTileSource.
     if (!demSource || demSource->baseImpl->type != style::SourceType::RasterDEM) {
         return out;
@@ -120,21 +155,25 @@ std::vector<LoadedDEMTile> loadedDEMTiles(const RenderSource* demSource) {
         if (!demData.getImagePtr() || demData.getImagePtr()->size.isEmpty() || demData.dim <= 0) {
             continue;
         }
+        // Overscaled ids can share an unwrapped tile; the first one wins
         const UnwrappedTileID unwrapped = id.toUnwrapped();
-        bool duplicate = false;
-        for (const auto& existing : out) {
-            if (existing.id == unwrapped) {
-                duplicate = true;
-                break;
-            }
-        }
-        if (duplicate) {
+        if (!seen.insert(unwrapped).second) {
             continue;
         }
-        out.push_back({unwrapped, &demData});
+        out.push_back({.id = unwrapped, .data = &demData});
     }
     return out;
 }
+
+// Set by tests only (RenderTerrain::setLeaveOutEmptyTilesForTesting)
+std::atomic<bool> leaveOutEmptyTiles{true};
+// Set by tests only (RenderTerrain::setSourcesEndBelowMinZoomForTesting)
+std::atomic<bool> sourcesEndBelowMinZoom{true};
+
+// Set by tests only (RenderTerrain::setMaxDEMTexturesForTesting); 0 keeps the default cap
+std::atomic<size_t> demTextureCapOverride{0};
+
+std::function<bool(const UnwrappedTileID&)> meshCoverFilter;
 
 } // namespace
 
@@ -165,6 +204,116 @@ void RenderTerrain::logCoverStats() const {
     }
 }
 
+std::set<UnwrappedTileID> RenderTerrain::fullSizeDrapeTilesOf(const std::set<UnwrappedTileID>& cover,
+                                                              const std::array<double, 2>& origin,
+                                                              const std::set<UnwrappedTileID>& hadFullSize,
+                                                              size_t nearest) {
+    uint8_t finestZoom = 0;
+    for (const auto& id : cover) finestZoom = std::max(finestZoom, id.canonical.z);
+    const auto isFinest = [&](const UnwrappedTileID& id) {
+        return id.canonical.z >= finestZoom;
+    };
+
+    std::vector<UnwrappedTileID> candidates;
+    for (const auto& id : cover) {
+        if (isFinest(id) || hadFullSize.contains(id)) candidates.push_back(id);
+    }
+    std::sort(candidates.begin(), candidates.end(), [&](const UnwrappedTileID& a, const UnwrappedTileID& b) {
+        return nearerTo(origin, a, b);
+    });
+    std::set<UnwrappedTileID> full;
+    size_t taken = 0;
+    for (const auto& id : candidates) {
+        if (taken == nearest) break;
+        if (isFinest(id)) {
+            full.insert(id);
+            ++taken;
+        }
+    }
+    for (const auto& id : candidates) {
+        if (full.size() >= fullSizeDrapeMax) break;
+        if (hadFullSize.contains(id)) full.insert(id);
+    }
+    return full;
+}
+
+RenderTerrain::DrapeSizes RenderTerrain::drapeSizesFor(MapMode mode,
+                                                       int drapeCap,
+                                                       const std::set<UnwrappedTileID>& cover,
+                                                       const std::array<double, 2>& origin,
+                                                       const std::set<UnwrappedTileID>& hadFullSize) {
+    if (mode == MapMode::Continuous) {
+        return {.fullSizeTiles = fullSizeDrapeTilesOf(cover, origin, hadFullSize),
+                .maxResizes = static_cast<size_t>(std::max(drapeCap, 0))};
+    }
+    return {.fullSizeTiles = fullSizeDrapeTilesOf(cover, origin, {}, fullSizeDrapeMax), .maxResizes = 0};
+}
+
+void RenderTerrain::setLeaveOutEmptyTilesForTesting(bool leaveOut) {
+    leaveOutEmptyTiles = leaveOut;
+}
+
+bool RenderTerrain::leavesOutEmptyTiles() {
+    return leaveOutEmptyTiles;
+}
+
+size_t RenderTerrain::meshTileCap(const size_t modeCap,
+                                  const double pitch,
+                                  const double fieldOfView,
+                                  const bool oneZoom) {
+    const bool topEdgeOnTheGround = pitch + fieldOfView / 2.0 < std::numbers::pi / 2.0;
+    return oneZoom && topEdgeOnTheGround ? modeCap * 2 : modeCap;
+}
+
+std::optional<uint8_t> RenderTerrain::sourceMinZoomReach() {
+    return sourcesEndBelowMinZoom ? std::optional<uint8_t>{2} : std::nullopt;
+}
+
+void RenderTerrain::setSourcesEndBelowMinZoomForTesting(bool end) {
+    sourcesEndBelowMinZoom = end;
+}
+
+void RenderTerrain::setMaxDEMTexturesForTesting(size_t cap) {
+    demTextureCapOverride = cap;
+}
+
+void RenderTerrain::setMeshCoverFilterForTesting(std::function<bool(const UnwrappedTileID&)> keep) {
+    meshCoverFilter = std::move(keep);
+}
+
+uint8_t RenderTerrain::skirtEdges(const UnwrappedTileID& tile, const std::set<UnwrappedTileID>& cover) {
+    // The two tiles' edges on the grid of the finer zoom, in tiles across the unwrapped world
+    struct Box {
+        int64_t x0, x1, y0, y1;
+    };
+    const auto boxAt = [](const UnwrappedTileID& id, int zoom) {
+        const int shift = zoom - id.canonical.z;
+        const int64_t x = static_cast<int64_t>(id.wrap) * (int64_t{1} << id.canonical.z) + id.canonical.x;
+        return Box{.x0 = x << shift,
+                   .x1 = (x + 1) << shift,
+                   .y0 = int64_t{id.canonical.y} << shift,
+                   .y1 = (int64_t{id.canonical.y} + 1) << shift};
+    };
+    const auto overlap = [](int64_t a0, int64_t a1, int64_t b0, int64_t b1) {
+        return std::max(a0, b0) < std::min(a1, b1);
+    };
+
+    uint8_t edges = 0;
+    for (const auto& other : cover) {
+        if (other == tile) {
+            continue;
+        }
+        const int zoom = std::max(tile.canonical.z, other.canonical.z);
+        const Box a = boxAt(tile, zoom);
+        const Box b = boxAt(other, zoom);
+        if (a.y0 == b.y1 && overlap(a.x0, a.x1, b.x0, b.x1)) edges |= 1;
+        if (a.x1 == b.x0 && overlap(a.y0, a.y1, b.y0, b.y1)) edges |= 2;
+        if (a.y1 == b.y0 && overlap(a.x0, a.x1, b.x0, b.x1)) edges |= 4;
+        if (a.x0 == b.x1 && overlap(a.y0, a.y1, b.y0, b.y1)) edges |= 8;
+    }
+    return edges;
+}
+
 std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     const TransformState& state, const std::shared_ptr<UpdateParameters>& updateParameters) const {
     std::set<UnwrappedTileID> out;
@@ -184,17 +333,17 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     // elevation-aware ideal cover from the view, not the DEM's loaded tile set.
     const uint16_t terrainCoverTileSize = demSource->getTileSize();
     // Deeper than the DEM goes, as maplibre-gl-js does: a tile past its maxzoom samples its DEM
-    // ancestor through a sub-tile offset (the ancestor fallback in update()), and its 1024 px
-    // drape target covers a smaller area. Capped at the DEM's maxzoom, a close-up at z16 over a
+    // ancestor through a sub-tile offset (the ancestor fallback in update()), and its drape
+    // target covers a smaller area. Capped at the DEM's maxzoom, a close-up at z16 over a
     // z12 DEM stretched each target 8x (dotted roads, blocky imagery). How deep depends on the
-    // load mode (meshMaxZoom): Quality follows the view as gl-js does; Balanced and Performance
-    // stop sooner, since each level deeper adds tiles, and drape memory with them.
+    // load mode (meshMaxZoom): Quality and Balanced follow the view as gl-js does; Performance
+    // stops sooner, since each level deeper adds tiles, and drape memory with them.
     const TerrainLoadMode loadMode = updateParameters ? updateParameters->terrainLoadMode : TerrainLoadMode::Quality;
     const Range<uint8_t> zoomRange{0, meshMaxZoom(loadMode, demSource->getMaxZoom())};
 
     // LOD parameters from the frame drive the same near-high/far-low zoom
     // selection every other source uses, so the near field drapes at a higher
-    // zoom (smaller ground area per 1024 target = sharper draped content).
+    // zoom (smaller ground area per drape target = sharper draped content).
     util::TileCoverParameters coverParams{.transformState = state, .elevationProvider = &elevationProvider};
     // The finest tiles go under the camera (where the screen is densest), as the mesh-tile cap below
     // keeps the tiles nearest it; measured from the map centre, a steep pitch gives the ground at the
@@ -250,8 +399,8 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
     // them as streaks. Per-mode cap (TerrainLoadBudget::maxMeshTiles): Quality keeps
     // a generous cap so terrain render distance stays long; Balanced/Performance trade distance
     // for frame time. It caps the cover, not just the mesh: the drape-target pool allocates a
-    // 1024 px target per cover tile, so a cap on the mesh alone still allocated one for every
-    // tile it dropped.
+    // target per cover tile, so a cap on the mesh alone still allocated one for every tile it
+    // dropped.
     // Before the cap drops any tile, the farthest tiles past the DEM's maxzoom go back to their
     // parents (coarsenFarMeshTiles): the deeper mesh (meshMaxZoom) then costs detail in the
     // distance, where a tile covers little of the screen, instead of terrain render distance.
@@ -262,9 +411,18 @@ std::set<UnwrappedTileID> RenderTerrain::computeMeshCover(
         const auto origin = meshTileCapOrigin(state);
         out = coarsenFarMeshTiles(std::move(out), maxTiles, demSource->getMaxZoom(), origin);
         coverStats.coarsened = out.size();
-        out = nearestMeshTiles(std::move(out), maxTiles, origin);
-        coverStats.cap = maxTiles;
+        // Up to the pitch threshold the cover has one zoom: at the threshold on a phone, 67 tiles
+        // of the DEM's own zoom, which cannot merge. Dropping the farthest of them left the far
+        // corners of the view to the sky.
+        const bool oneZoom = coverParams.tileLodMode != TileLodMode::Adaptive &&
+                             state.getPitch() <= coverParams.tileLodPitchThreshold;
+        const size_t cap = meshTileCap(maxTiles, state.getPitch(), state.getFieldOfView(), oneZoom);
+        out = nearestMeshTiles(std::move(out), cap, origin);
+        coverStats.cap = cap;
         coverStats.kept = out.size();
+    }
+    if (meshCoverFilter) {
+        std::erase_if(out, [](const UnwrappedTileID& id) { return !meshCoverFilter(id); });
     }
     coverStats.minZ = 255;
     coverStats.maxZ = 0;
@@ -323,7 +481,7 @@ std::set<UnwrappedTileID> RenderTerrain::dilateCover(const std::set<UnwrappedTil
                 // The neighbour at this tile's zoom may sit over ground a tile of another zoom
                 // already covers (the cover mixes zooms, a finer tile beside a coarser one): meshing
                 // it would add a second surface over that ground, sampled from a coarser or finer
-                // DEM, and a drape target and 1024 px of texture to hold it. Only ground the cover
+                // DEM, and a drape target and its texture to hold it. Only ground the cover
                 // leaves out is worth a tile.
                 if (coveredAlready(neighbour)) continue;
                 dilated.insert(neighbour);
@@ -353,16 +511,11 @@ std::set<UnwrappedTileID> RenderTerrain::nearestMeshTiles(std::set<UnwrappedTile
         return tiles;
     }
 
-    // Ties go by tile ID, so the same view keeps the same tiles from one call to the next.
     std::vector<UnwrappedTileID> sorted(tiles.begin(), tiles.end());
     std::partial_sort(sorted.begin(),
                       sorted.begin() + static_cast<std::ptrdiff_t>(maxTiles),
                       sorted.end(),
-                      [&](const UnwrappedTileID& a, const UnwrappedTileID& b) {
-                          const double da = tileCentreDistance2(a, origin);
-                          const double db = tileCentreDistance2(b, origin);
-                          return da < db || (da == db && a < b);
-                      });
+                      [&](const UnwrappedTileID& a, const UnwrappedTileID& b) { return nearerTo(origin, a, b); });
     return {sorted.begin(), sorted.begin() + static_cast<std::ptrdiff_t>(maxTiles)};
 }
 
@@ -507,45 +660,23 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
         tilesWithDrawables.clear();
     }
 
+    if (updateParameters) {
+        hazeColor = updateParameters->terrainHazeColor;
+        hazeRange = updateParameters->terrainHazeRange;
+    }
+
     // If we don't have a DEM source, we can't create terrain drawables
     if (!demSource) {
         return;
     }
 
-    // Get tiles from the DEM source
-    auto renderTiles = demSource->getRawRenderTiles();
-    if (renderTiles->empty()) {
-        return;
-    }
+    // A DEM source with no tile loaded yet is no reason to draw nothing: the mesh tiles below
+    // fall back to the flat placeholder until their elevation arrives.
 
     // Cast to LayerGroup for addDrawable
     auto* lg = static_cast<LayerGroup*>(layerGroup.get());
     if (!lg) {
         return;
-    }
-
-    // Decode and cache the DEM textures of loaded DEM tiles - rendered ones and the
-    // retained ancestors alike, so shallower layer tiles can bind an ancestor DEM.
-    ++demUpdateCounter;
-    for (const auto& loaded : loadedDEMTiles(demSource)) {
-        const DEMData* demData = loaded.data;
-        {
-            // All tiles come from the same raster-dem source, so they share one
-            // encoding and DEM dimension
-            demUnpackVector = demData->getUnpackVector();
-            demDim = demData->dim;
-            if (auto existing = demTextures.find(loaded.id); existing != demTextures.end()) {
-                existing->second.lastUsed = demUpdateCounter;
-            } else if (auto texture = createDEMTexture(context, *demData)) {
-                // Keep the texture available for elevation sampling by non-draped layers
-                demTextures[loaded.id] = {.texture = texture, .dim = demData->dim, .lastUsed = demUpdateCounter};
-#if MLN_RENDER_BACKEND_OPENGL
-                // Also pack this tile's DEM into the array for the (upcoming) instanced
-                // depth pass. Additive: the per-tile texture above is still the fallback.
-                packDEMArrayLayer(context, loaded.id, *demData);
-#endif
-            }
-        }
     }
 
     // The mesh (and drape) tile set: an elevation-aware, LOD-based ideal cover
@@ -554,15 +685,84 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
     // (blurry roads) or leave uncovered areas as skirt. DEM/drape textures fall
     // back to ancestors per tile below while exact tiles load. tileCover already
     // limits to the frustum (elevation included), so no extra cull is needed.
-    // Use the cover Renderer::Impl already computed for this frame when available:
-    // recomputing here can yield a different set once demDim is known (see
-    // setFrameMeshCover), which would desync this mesh from the drape-target pool.
+    // Use the cover Renderer::Impl already computed for this frame when available: it is
+    // the set the drape-target pool was built from (see setFrameMeshCover), and computing
+    // it again here would repeat the work.
     // The cover is already capped per load mode (computeMeshCover).
     std::set<UnwrappedTileID> meshTiles = frameMeshCover ? std::move(*frameMeshCover)
                                                          : computeMeshCover(state, updateParameters);
     frameMeshCover.reset();
     logCoverStats();
     coverStats.own = coverStats.ancestor = coverStats.flat = 0;
+
+    skirtEdgeMasks.clear();
+    if (meshSkirtLength == TerrainSkirtLength::Shared) {
+        for (const auto& id : meshTiles) {
+            skirtEdgeMasks.emplace(OverscaledTileID(id.canonical.z, id.wrap, id.canonical), skirtEdges(id, meshTiles));
+        }
+    }
+
+    // A loaded DEM tile worth a texture: a mesh tile itself; an ancestor of one, which the mesh
+    // falls back to while its own tile loads; or a descendant, which an elevated layer's tile
+    // deeper than the mesh tile samples (getTerrainData).
+    const auto relatedToMesh = [&](const UnwrappedTileID& id) {
+        return std::any_of(meshTiles.begin(), meshTiles.end(), [&](const UnwrappedTileID& meshTile) {
+            return meshTile == id || meshTile.isChildOf(id) || id.isChildOf(meshTile);
+        });
+    };
+
+    // Make a texture for each loaded DEM tile related to the mesh tile set; a loaded tile
+    // unrelated to it gets none. The DEM source's cover is not capped where the mesh is, so it
+    // holds such tiles.
+    ++demUpdateCounter;
+#if MLN_RENDER_BACKEND_OPENGL
+    // This frame's DEM data by tile, for packing a tile into the GL array once a mesh tile binds it
+    std::unordered_map<UnwrappedTileID, const DEMData*> frameDEMData;
+#endif
+    for (const auto& loaded : loadedDEMTiles(demSource)) {
+        const DEMData* demData = loaded.data;
+#if MLN_RENDER_BACKEND_OPENGL
+        frameDEMData.emplace(loaded.id, demData);
+#endif
+        {
+            // All tiles come from the same raster-dem source, so they share one
+            // encoding and DEM dimension
+            demUnpackVector = demData->getUnpackVector();
+            demEncoding = demData->encoding;
+            demDim = demData->dim;
+            if (auto existing = demTextures.find(loaded.id); existing != demTextures.end()) {
+                existing->second.lastUsed = demUpdateCounter;
+                // A neighbour that loaded after the texture was made has backfilled the border
+                // (RenderRasterDEMSource::onTileChanged), which the tile's edge samples. The
+                // image is shared and already changed; the copy on the GPU is not. Send it
+                // again, as gl-js does (needsDEMTextureUpload), or the edge keeps the stand-in
+                // border and steps against its neighbour.
+                if (existing->second.borderRevision != demData->getBorderRevision()) {
+                    existing->second.borderRevision = demData->getBorderRevision();
+                    existing->second.texture->setImage(demData->getImagePtr());
+#if MLN_RENDER_BACKEND_OPENGL
+                    // OpenGL uploads at once; Metal does it when the texture is next bound
+                    existing->second.texture->upload();
+                    // A tile already packed into the array is packed again; one not yet bound is
+                    // packed from this frame's data when it is
+                    if (demArrayLayer.contains(loaded.id)) {
+                        packDEMArrayLayer(context, loaded.id, *demData);
+                    }
+#endif
+                    context.renderingStats().numDEMTexturesRefreshed++;
+                }
+            } else if (relatedToMesh(loaded.id)) {
+                if (auto texture = createDEMTexture(context, *demData)) {
+                    context.renderingStats().numDEMTexturesCreated++;
+                    // Keep the texture available for elevation sampling by non-draped layers
+                    demTextures[loaded.id] = {.texture = texture,
+                                              .dim = demData->dim,
+                                              .lastUsed = demUpdateCounter,
+                                              .borderRevision = demData->getBorderRevision()};
+                }
+            }
+        }
+    }
 
     // Drop drawables and cached DEM textures for tiles that left the mesh tile
     // set, keeping everything else intact between frames
@@ -579,6 +779,18 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
             }) > 0) {
             depthDirty = true;
         }
+#if !MLN_RENDER_BACKEND_OPENGL
+        // A drawable dropped from one group alone, for any reason, leaves the two groups listing different
+        // tiles, and the shared drawable buffer needs the same tiles in the same order (see
+        // TerrainLayerTweaker), so start both over. OpenGL is left out: its depth group is one instanced
+        // drawable, so its count never matches the terrain group's.
+        if (lg->getDrawableCount() != depthLg->getDrawableCount()) {
+            lg->clearDrawables();
+            depthLg->clearDrawables();
+            depthDirty = true;
+            tilesWithDrawables.clear();
+        }
+#endif
     }
     for (auto it = tilesWithDrawables.begin(); it != tilesWithDrawables.end();) {
         if (!currentTiles.contains(it->first)) {
@@ -592,15 +804,7 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
     // can serve as ancestor fallbacks while exact tiles load (as maplibre-gl-js
     // retains terrain tiles in its source cache); drop unrelated ones
     for (auto it = demTextures.begin(); it != demTextures.end();) {
-        bool related = false;
-        for (const auto& current : currentTiles) {
-            const UnwrappedTileID unwrapped = current.toUnwrapped();
-            if (unwrapped == it->first || unwrapped.isChildOf(it->first) || it->first.isChildOf(unwrapped)) {
-                related = true;
-                break;
-            }
-        }
-        if (related) {
+        if (relatedToMesh(it->first)) {
             it = std::next(it);
         } else {
 #if MLN_RENDER_BACKEND_OPENGL
@@ -612,11 +816,15 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
     // Cap the cache: ancestor/descendant relations accumulate while browsing
     // (zooming makes whole chains "related"), which previously grew past 2GB
     // of DEM textures and overflowed/OOMed. Evict least-recently-used entries
-    // that were not used this frame until the cache is back under budget.
+    // that were not used this frame until the cache is back under budget. A texture an
+    // elevated layer bound in the previous frame's draw (getTerrainData) is in use as well: an
+    // ancestor DEM that only symbols still sample has no loaded DEM tile to remake it from.
+    const size_t capOverride = demTextureCapOverride.load();
+    const size_t maxDEMTextures = capOverride ? capOverride : defaultMaxDEMTextures;
     if (demTextures.size() > maxDEMTextures) {
         std::vector<std::pair<uint64_t, UnwrappedTileID>> evictable;
         for (const auto& [id, entry] : demTextures) {
-            if (entry.lastUsed != demUpdateCounter) {
+            if (entry.lastUsed != demUpdateCounter && entry.sampledAt + 1 < demUpdateCounter) {
                 evictable.emplace_back(entry.lastUsed, id);
             }
         }
@@ -636,11 +844,21 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
     for (const auto& unwrapped : meshTiles) {
         const OverscaledTileID tileID(unwrapped.canonical.z, unwrapped.wrap, unwrapped.canonical);
 
+        // The drape pool replaces a tile's target when the tile needs the other size, and a drawable
+        // samples the texture it was built with: left alone it would keep drawing the old target,
+        // which nothing bakes any more.
+        const bool drapeReplaced = [&] {
+            const auto built = tilesWithDrawables.find(tileID);
+            const auto target = texturePool.getRenderTarget(unwrapped);
+            return built != tilesWithDrawables.end() && target &&
+                   terrain::drapeTextureReplaced(built->second, target->getTexture().get());
+        }();
+
         // Skip if the tile already has a drawable bound to its own DEM, but mark that DEM used:
         // this early-out is a tier-2 tile's only path, so the LRU could otherwise evict the
         // texture from under the drawable still sampling it.
         if (const auto existing = tilesWithDrawables.find(tileID);
-            existing != tilesWithDrawables.end() && existing->second.tier == 2) {
+            existing != tilesWithDrawables.end() && existing->second.tier == 2 && !drapeReplaced) {
             coverStats.own++;
             if (auto cached = demTextures.find(unwrapped); cached != demTextures.end()) {
                 cached->second.lastUsed = demUpdateCounter;
@@ -704,17 +922,19 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
 
         // If a drawable already exists for this tile, keep it until a better DEM can be
         // bound - a higher tier, or a deeper ancestor while the tile's own DEM is missing (a
-        // z13 tile first built on a z6 ancestor renders flat until z12 replaces it) - then
-        // replace it
-        const terrain::DEMBinding binding{
+        // z13 tile first built on a z6 ancestor renders flat until z12 replaces it) - or until the
+        // drape pool has replaced the tile's drape target (drapeReplaced) - then replace it
+        terrain::DEMBinding binding{
             .tier = demTier,
             .demZoom = static_cast<int8_t>(demTileUsed ? static_cast<int>(demTileUsed->canonical.z) : -1)};
         if (const auto existing = tilesWithDrawables.find(tileID); existing != tilesWithDrawables.end()) {
-            if (!terrain::shouldRebind(existing->second, binding)) {
+            if (!drapeReplaced && !terrain::shouldRebind(existing->second, binding)) {
                 continue;
             }
             lg->removeDrawablesIf(
                 [&](gfx::Drawable& drawable) { return drawable.getTileID() && *drawable.getTileID() == tileID; });
+            // The depth drawable ignores the drape but is remade with the terrain drawable, to keep the
+            // two groups in the same order (see TerrainLayerTweaker::drawableUniformBuffer).
             if (depthLg) {
                 depthLg->removeDrawablesIf(
                     [&](gfx::Drawable& drawable) { return drawable.getTileID() && *drawable.getTileID() == tileID; });
@@ -727,6 +947,15 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
         {
             float layer = -1.0f;
             if (demTileUsed) {
+                // Pack the DEM into the array for the instanced depth pass only once a mesh tile
+                // binds it: packing every loaded DEM tile let the retained ancestors fill the 64
+                // layers, and mesh tiles left without one drop out of the depth pass (no occlusion
+                // over them). A texture is bound the frame it is made, while its DEM is loaded.
+                if (!demArrayLayer.contains(*demTileUsed)) {
+                    if (const auto data = frameDEMData.find(*demTileUsed); data != frameDEMData.end()) {
+                        packDEMArrayLayer(context, *demTileUsed, *data->second);
+                    }
+                }
                 if (const auto la = demArrayLayer.find(*demTileUsed); la != demArrayLayer.end()) {
                     layer = static_cast<float>(la->second);
                 }
@@ -743,6 +972,7 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
         auto drawable = createDrawableForTile(context, shaders, tileID, demTexture, renderTarget->getTexture());
         if (drawable) {
             lg->addDrawable(std::move(drawable));
+            binding.drapeTexture = renderTarget->getTexture();
             tilesWithDrawables[tileID] = binding;
 #if !MLN_RENDER_BACKEND_OPENGL
             // Non-GL backends: one depth drawable per tile (no instancing path there).
@@ -784,7 +1014,7 @@ void RenderTerrain::update(RenderOrchestrator& orchestrator,
                 cc != drawableDemCoords.end()
                     ? cc->second
                     : std::array<float, 4>{{1.0f / util::EXTENT, 0.0f, 0.0f, static_cast<float>(demDim)}};
-            instances.push_back({tileID, coords, lc->second});
+            instances.push_back({tileID, coords, lc->second, getDrawableSkirtEdges(tileID)});
             util::hash_combine(sig, std::hash<OverscaledTileID>{}(tileID));
             util::hash_combine(sig, static_cast<int>(lc->second));
         }
@@ -897,28 +1127,8 @@ float RenderTerrain::getElevation(const UnwrappedTileID& tileID_, float x, float
     if (!best) {
         return 0.0f;
     }
-    const DEMData& demData = *best->data;
-
     // Map the tile-local coordinate into the (possibly ancestor) DEM tile
-    const auto off = demSubTileOffset(tileID.canonical, best->id.canonical);
-    const float xInDem = (off.dx * util::EXTENT + x) / off.scale;
-    const float yInDem = (off.dy * util::EXTENT + y) / off.scale;
-
-    // Bilinear interpolation of the DEM texels, as in maplibre-gl-js Terrain.getDEMElevation
-    const float dim = static_cast<float>(demData.dim);
-    const float px = util::clamp(xInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-    const float py = util::clamp(yInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-    const auto x0 = static_cast<int32_t>(std::floor(px));
-    const auto y0 = static_cast<int32_t>(std::floor(py));
-    const float fx = px - static_cast<float>(x0);
-    const float fy = py - static_cast<float>(y0);
-    const float tl = static_cast<float>(demData.get(x0, y0));
-    const float tr = static_cast<float>(demData.get(x0 + 1, y0));
-    const float bl = static_cast<float>(demData.get(x0, y0 + 1));
-    const float br = static_cast<float>(demData.get(x0 + 1, y0 + 1));
-    const float top = tl + (tr - tl) * fx;
-    const float bottom = bl + (br - bl) * fx;
-    return top + (bottom - top) * fy;
+    return sampleDEM(*best->data, demSubTileOffset(tileID.canonical, best->id.canonical), x, y);
 }
 
 double RenderTerrain::getMinTileElevationForLatLng(const LatLng& latLng, uint8_t zoom) const {
@@ -956,42 +1166,6 @@ float RenderTerrain::getElevationWithExaggeration(const UnwrappedTileID& tileID,
     return getElevation(tileID, x, y) * getExaggeration();
 }
 
-double RenderTerrain::getElevationForLatLng(const LatLng& latLng) const {
-    if (!demSource) {
-        return 0.0;
-    }
-
-    // Sample as deep as the finest DEM tile loaded: getElevation walks up to the closest
-    // covering ancestor, but never down, so sampling shallower than the DEM reads nothing.
-    int sampleZoom = -1;
-    const auto renderTiles = demSource->getRawRenderTiles();
-    for (const auto& renderTile : *renderTiles) {
-        if (renderTile.getTile().kind == Tile::Kind::RasterDEM) {
-            sampleZoom = std::max(sampleZoom, static_cast<int>(renderTile.id.canonical.z));
-        }
-    }
-    if (sampleZoom < 0) {
-        return 0.0;
-    }
-
-    const double n = std::pow(2.0, sampleZoom);
-    // The int-zoom overload of project() returns tile units directly (0..2^zoom); the
-    // same-named double-scale overload returns pixels. Do not divide by the tile size.
-    const auto point = Projection::project(latLng, sampleZoom);
-    const double fx = point.x;
-    const double fy = point.y;
-    const auto tx = static_cast<int64_t>(std::floor(fx));
-    const auto ty = static_cast<int64_t>(std::floor(fy));
-    if (ty < 0 || static_cast<double>(ty) >= n) {
-        return 0.0; // past a pole
-    }
-
-    const UnwrappedTileID sampleTile(static_cast<uint8_t>(sampleZoom), tx, ty);
-    const auto localX = static_cast<float>((fx - static_cast<double>(tx)) * util::EXTENT);
-    const auto localY = static_cast<float>((fy - static_cast<double>(ty)) * util::EXTENT);
-    return getElevationWithExaggeration(sampleTile, localX, localY);
-}
-
 std::optional<std::function<float(const Point<float>&)>> RenderTerrain::elevationSampler(
     const UnwrappedTileID& tileID) const {
     if (!demSource || !isEnabled()) {
@@ -1006,28 +1180,35 @@ std::optional<std::function<float(const Point<float>&)>> RenderTerrain::elevatio
         }
     }
     if (!best) {
-        return std::nullopt;
+        // No DEM tile covers the whole tile, as for a tile shallower than the DEM cover when no
+        // ancestor has loaded: read the deepest loaded tile under each point from the height copy
+        // (one frame old here, and it owns its data)
+        const auto index = elevationIndex;
+        if (!index) {
+            return std::nullopt;
+        }
+        return [index, tileID](const Point<float>& p) -> float {
+            const double tiles = static_cast<double>(1u << tileID.canonical.z);
+            const double worldX = static_cast<double>(tileID.canonical.x) + tileID.wrap * tiles + p.x / util::EXTENT;
+            const double worldY = static_cast<double>(tileID.canonical.y) + p.y / util::EXTENT;
+            const LatLng latLng = Projection::unproject(
+                {worldX / tiles * util::tileSize_D, worldY / tiles * util::tileSize_D}, 1.0, LatLng::Unwrapped);
+            return static_cast<float>(index->getElevation(latLng).value_or(0.0));
+        };
     }
     const DEMData* demData = best->data;
     const auto off = demSubTileOffset(tileID.canonical, best->id.canonical);
     const float exaggeration = getExaggeration();
-    const float dim = static_cast<float>(demData->dim);
-    return [demData, off, exaggeration, dim](const Point<float>& p) -> float {
+    return [this, tileID, demData, off, exaggeration](const Point<float>& p) -> float {
+        // Line-label anchors and collision circles reach past the tile edge (the symbol buffer).
+        // Inside the DEM tile, sample it; past it, find the neighbouring tile's height
+        // (getElevation normalises the point into it) rather than clamp to this tile's edge.
         const float xInDem = (off.dx * util::EXTENT + p.x) / off.scale;
         const float yInDem = (off.dy * util::EXTENT + p.y) / off.scale;
-        const float px = util::clamp(xInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-        const float py = util::clamp(yInDem / util::EXTENT * dim, 0.0f, dim - 1.0f);
-        const auto x0 = static_cast<int32_t>(std::floor(px));
-        const auto y0 = static_cast<int32_t>(std::floor(py));
-        const float fx = px - static_cast<float>(x0);
-        const float fy = py - static_cast<float>(y0);
-        const float tl = static_cast<float>(demData->get(x0, y0));
-        const float tr = static_cast<float>(demData->get(x0 + 1, y0));
-        const float bl = static_cast<float>(demData->get(x0, y0 + 1));
-        const float br = static_cast<float>(demData->get(x0 + 1, y0 + 1));
-        const float top = tl + (tr - tl) * fx;
-        const float bottom = bl + (br - bl) * fx;
-        return (top + (bottom - top) * fy) * exaggeration;
+        if (xInDem < 0.0f || xInDem >= util::EXTENT || yInDem < 0.0f || yInDem >= util::EXTENT) {
+            return getElevationWithExaggeration(tileID, p.x, p.y);
+        }
+        return sampleDEM(*demData, off, p.x, p.y) * exaggeration;
     };
 }
 
@@ -1035,52 +1216,73 @@ std::optional<LatLng> RenderTerrain::pickLatLng(const TransformState& state, con
     if (!isEnabled()) {
         return std::nullopt;
     }
-    // TransformState unprojects y-up screen points; queries and the platform views hand us y-down
-    ScreenCoordinate flipped = pixel;
-    flipped.y = state.getSize().height - pixel.y;
-    const LatLng seaLevel = state.screenCoordinateToLatLng(flipped);
-    if (!getElevationAtLatLng(seaLevel)) {
-        return std::nullopt; // no DEM under the ray: nothing to pick against
-    }
-    const auto camera = state.getFreeCameraOptions().getLocation();
-    if (!camera || camera->altitude <= 0.0) {
+    // Sample the map side's height copy, kept current every frame (updateElevationIndex): one hash
+    // lookup per zoom level for each of the march's samples, and the same answer the map's pick
+    // (Map::latLngForPixelOnTerrain) gives for the same pixel
+    const auto& index = elevationIndex;
+    if (!index) {
         return std::nullopt;
     }
-    // Terrain height (exaggerated metres, the projection's z unit) where the ray crosses the
-    // horizontal plane at `planeHeight`
-    const auto surfaceHeightAt = [&](double planeHeight, LatLng& out) {
-        out = state.screenCoordinateToLatLng(flipped, planeHeight);
-        return getElevationAtLatLng(out).value_or(0.0);
-    };
-    constexpr int steps = 64;
-    const double top = camera->altitude * 0.999;
-    double above = top; // last plane height known to be above the surface
-    LatLng probe;
-    if (surfaceHeightAt(above, probe) >= above) {
-        return std::nullopt; // camera inside the terrain
-    }
-    for (int i = 1; i <= steps; ++i) {
-        const double h = top * (1.0 - static_cast<double>(i) / steps);
-        if (surfaceHeightAt(h, probe) < h) {
-            above = h;
-            continue;
-        }
-        // Crossed between `above` and `h`: bisect onto the surface
-        double below = h;
-        for (int j = 0; j < 8; ++j) {
-            const double mid = 0.5 * (above + below);
-            if (surfaceHeightAt(mid, probe) < mid) {
-                above = mid;
-            } else {
-                below = mid;
-            }
-        }
-        return state.screenCoordinateToLatLng(flipped, 0.5 * (above + below), LatLng::Wrapped);
-    }
-    return std::nullopt;
+    return pickTerrainSurface(
+        state, pixel, [&index](const LatLng& latLng) { return index->getElevation(latLng); }, index->getMaxElevation());
 }
 
-std::optional<double> RenderTerrain::getElevationAtLatLng(const LatLng& latLng) const {
+bool RenderTerrain::ElevationGridCopy::isCopyOf(const DEMData* dem) const {
+    return source == dem && borderRevision == dem->getBorderRevision();
+}
+
+bool RenderTerrain::updateElevationIndex() {
+    if (!demSource || !isEnabled()) {
+        elevationGrids.clear();
+        const bool changed = elevationIndex != nullptr;
+        elevationIndex.reset();
+        return changed;
+    }
+    const auto loaded = loadedDEMTiles(demSource);
+    const float exaggeration = getExaggeration();
+    bool changed = !elevationIndex || elevationIndex->getExaggeration() != exaggeration ||
+                   loaded.size() != elevationGrids.size();
+    if (!changed) {
+        for (const auto& tile : loaded) {
+            const auto found = elevationGrids.find(tile.id);
+            if (found == elevationGrids.end() || !found->second.isCopyOf(tile.data)) {
+                changed = true;
+                break;
+            }
+        }
+    }
+    if (!changed) {
+        return false;
+    }
+    std::unordered_map<UnwrappedTileID, ElevationGridCopy> grids;
+    std::vector<TerrainElevationIndex::Tile> tiles;
+    tiles.reserve(loaded.size());
+    for (const auto& tile : loaded) {
+        ElevationGridCopy copy;
+        if (const auto found = elevationGrids.find(tile.id);
+            found != elevationGrids.end() && found->second.isCopyOf(tile.data)) {
+            copy = found->second;
+        } else {
+            copy = {.source = tile.data,
+                    .borderRevision = tile.data->getBorderRevision(),
+                    .grid = std::make_shared<const TerrainElevationIndex::Grid>(*tile.data)};
+        }
+        tiles.push_back({.id = tile.id, .grid = copy.grid});
+        grids.emplace(tile.id, std::move(copy));
+    }
+    elevationGrids = std::move(grids);
+    if (tiles.empty()) {
+        // Terrain on with no DEM loaded yet: nothing to hand over, and nothing changed if the
+        // map already has none
+        const bool hadIndex = elevationIndex != nullptr;
+        elevationIndex.reset();
+        return hadIndex;
+    }
+    elevationIndex = std::make_shared<const TerrainElevationIndex>(std::move(tiles), exaggeration);
+    return true;
+}
+
+std::optional<double> RenderTerrain::getElevationForLatLng(const LatLng& latLng, UnwrappedTileID* from) const {
     if (!demSource || !isEnabled()) {
         return std::nullopt;
     }
@@ -1092,7 +1294,7 @@ std::optional<double> RenderTerrain::getElevationAtLatLng(const LatLng& latLng) 
     for (const auto& candidate : loaded) {
         const UnwrappedTileID& id = candidate.id;
         const auto z = static_cast<int32_t>(id.canonical.z);
-        if (best && z <= static_cast<int32_t>(best->id.canonical.z)) {
+        if (best && std::cmp_less_equal(z, best->id.canonical.z)) {
             continue;
         }
         // The integer-zoom overload projects into tile units (world size 2^z), not pixels.
@@ -1110,50 +1312,15 @@ std::optional<double> RenderTerrain::getElevationAtLatLng(const LatLng& latLng) 
     if (!best) {
         return std::nullopt;
     }
-    return static_cast<double>(
-        getElevationWithExaggeration(best->id, static_cast<float>(bestX), static_cast<float>(bestY)));
-}
-
-std::optional<double> RenderTerrain::findElevationForLatLng(const LatLng& latLng) const {
-    if (!demSource) {
-        return std::nullopt;
+    if (from) {
+        *from = best->id;
     }
-    int sampleZoom = -1;
-    const auto renderTiles = demSource->getRawRenderTiles();
-    for (const auto& renderTile : *renderTiles) {
-        if (renderTile.getTile().kind == Tile::Kind::RasterDEM) {
-            sampleZoom = std::max(sampleZoom, static_cast<int>(renderTile.id.canonical.z));
-        }
-    }
-    if (sampleZoom < 0) {
-        return std::nullopt;
-    }
-    const double n = std::pow(2.0, sampleZoom);
-    const auto point = Projection::project(latLng, sampleZoom);
-    const auto tx = static_cast<int64_t>(std::floor(point.x));
-    const auto ty = static_cast<int64_t>(std::floor(point.y));
-    if (ty < 0 || static_cast<double>(ty) >= n) {
-        return std::nullopt;
-    }
-    const UnwrappedTileID sampleTile(static_cast<uint8_t>(sampleZoom), tx, ty);
-    const auto localX = static_cast<float>((point.x - static_cast<double>(tx)) * util::EXTENT);
-    const auto localY = static_cast<float>((point.y - static_cast<double>(ty)) * util::EXTENT);
-
-    // A DEM tile has to cover the point: getElevation answers 0 where none does.
-    UnwrappedTileID covered = sampleTile;
-    float coveredX = localX;
-    float coveredY = localY;
-    if (!normalizeTileCoordinates(covered, coveredX, coveredY)) {
-        return std::nullopt;
-    }
-    const bool found = std::any_of(renderTiles->begin(), renderTiles->end(), [&](const RenderTile& renderTile) {
-        return renderTile.getTile().kind == Tile::Kind::RasterDEM &&
-               (renderTile.id == covered || covered.isChildOf(renderTile.id));
-    });
-    if (!found) {
-        return std::nullopt;
-    }
-    return getElevationWithExaggeration(sampleTile, localX, localY);
+    // Sample the tile just found; getElevation would search the DEM tiles for it again
+    return static_cast<double>(sampleDEM(*best->data,
+                                         {.scale = 1.0f, .dx = 0.0f, .dy = 0.0f},
+                                         static_cast<float>(bestX),
+                                         static_cast<float>(bestY)) *
+                               getExaggeration());
 }
 
 std::optional<RenderTerrain::TerrainData> RenderTerrain::getTerrainData(const UnwrappedTileID& tileID) const {
@@ -1171,6 +1338,8 @@ std::optional<RenderTerrain::TerrainData> RenderTerrain::getTerrainData(const Un
     if (!entry || !entry->texture) {
         return std::nullopt;
     }
+    // The layer is about to draw with this texture: keep it out of the next update()'s eviction
+    entry->sampledAt = demUpdateCounter;
 
     // Map tile-local coordinates (0..EXTENT) of the requested tile into
     // normalized coordinates (0..1) of the (possibly ancestor) DEM tile
@@ -1183,15 +1352,48 @@ std::optional<RenderTerrain::TerrainData> RenderTerrain::getTerrainData(const Un
     };
 }
 
+namespace {
+
+// The 1x1 DEM image of 0 m. dem_texel decodes a texel as R * u0 + G * u1 + B * u2 - u3 with the
+// unpack vector of the source's encoding, so a zero texel is -u3 (-10,000 m for Mapbox, -32,768 m
+// for Terrarium), not sea level.
+PremultipliedImage flatDEMImage(Tileset::RasterEncoding encoding) {
+    PremultipliedImage image(Size{1, 1});
+    if (encoding == Tileset::RasterEncoding::Terrarium) {
+        // 128 * 256 - 32768
+        image.data[0] = 128;
+        image.data[1] = 0;
+        image.data[2] = 0;
+    } else {
+        // 1 * 6553.6 + 134 * 25.6 + 160 * 0.1 - 10000
+        image.data[0] = 1;
+        image.data[1] = 134;
+        image.data[2] = 160;
+    }
+    image.data[3] = 255;
+    return image;
+}
+
+} // namespace
+
 const std::shared_ptr<gfx::Texture2D>& RenderTerrain::getPlaceholderDEMTexture(gfx::Context& context) {
     if (!placeholderDEMTexture) {
-        auto image = std::make_shared<PremultipliedImage>(Size{1, 1});
-        std::memset(image->data.get(), 0, image->bytes());
+        placeholderDEMEncoding = demEncoding;
         placeholderDEMTexture = context.createTexture2D();
-        placeholderDEMTexture->setImage(image);
+        placeholderDEMTexture->setImage(std::make_shared<PremultipliedImage>(flatDEMImage(demEncoding)));
         placeholderDEMTexture->setSamplerConfiguration({.filter = gfx::TextureFilterType::Nearest,
                                                         .wrapU = gfx::TextureWrapType::Clamp,
                                                         .wrapV = gfx::TextureWrapType::Clamp});
+    } else if (placeholderDEMEncoding != demEncoding) {
+        // The unpack vector changed under drawables still bound to the placeholder (the first tile
+        // of a Terrarium source loaded while the rest of the mesh waits). Their texture is the one
+        // that changes, in place, as for a DEM tile whose border was backfilled.
+        placeholderDEMEncoding = demEncoding;
+        placeholderDEMTexture->setImage(std::make_shared<PremultipliedImage>(flatDEMImage(demEncoding)));
+#if MLN_RENDER_BACKEND_OPENGL
+        // OpenGL uploads at once; the other backends do it when the texture is next bound
+        placeholderDEMTexture->upload();
+#endif
     }
     return placeholderDEMTexture;
 }
@@ -1288,6 +1490,26 @@ const std::shared_ptr<gfx::Texture2D>& RenderTerrain::getDepthTexture(gfx::Conte
                                                           .wrapV = gfx::TextureWrapType::Clamp});
     }
     return placeholderDepthTexture;
+}
+
+RenderTerrain::Haze RenderTerrain::getHaze(const TransformState& state) const {
+    // Distance haze (Map::setTerrainHaze), as maplibre-gl-js's terrain fog with fog-ground-blend 0.5, its
+    // near plane at n, the camera-to-center distance, and its far plane where the haze is to be full,
+    // `range` times n. (gl-js puts its fog near plane at the sea-level point under the center; the center
+    // itself keeps the reach the same multiple of n over high ground.) gl-js's fog depth at view depth d,
+    // far / (far - n) * (1 - n / d), is clear up to 0.5 and full at 1; the shaders take the haze as
+    // clamp(a - b / d, 0, 1) squared, with a = (far + n) / (far - n) and b = 2 far n / (far - n). As in
+    // gl-js it fades in between pitches of 60 and 70 degrees. Off, a and b are 0 and the color is clear.
+    const double hazeNear = state.getCameraToCenterDistance();
+    const double hazeFar = hazeNear * hazeRange;
+    const double hazeFade = std::clamp((state.getPitch() - util::deg2rad(60.0)) / util::deg2rad(10.0), 0.0, 1.0);
+    if (hazeFar <= hazeNear || hazeFade <= 0.0) {
+        return {};
+    }
+    const double hazeSpan = hazeFar - hazeNear;
+    return {.color = hazeColor * static_cast<float>(hazeFade),
+            .ramp = {{static_cast<float>((hazeFar + hazeNear) / hazeSpan),
+                      static_cast<float>(2.0 * hazeFar * hazeNear / hazeSpan)}}};
 }
 
 float RenderTerrain::getExaggeration() const {
@@ -1421,7 +1643,12 @@ void RenderTerrain::generateMesh(gfx::Context& /*context*/) {
                        .vertexCount = vertices.size() / 4,
                        .indexCount = indices.size(),
                        .vertices = std::move(vertices),
-                       .indices = std::move(indices)};
+                       .indices = std::make_shared<gfx::IndexVectorBase>(std::move(indices))};
+    // The topology never changes. Drop its CPU copy after the first GPU upload.
+    // The uploaded buffer belongs to that renderer's context: this mesh must be dropped
+    // with the context, not reused after context replacement. RenderOrchestrator owns
+    // RenderTerrain within Renderer::Impl; context replacement recreates the renderer.
+    mesh->indices->release();
 }
 
 std::shared_ptr<gfx::Texture2D> RenderTerrain::createDEMTexture(gfx::Context& context, const DEMData& demData) {
@@ -1462,7 +1689,7 @@ std::unique_ptr<gfx::Drawable> RenderTerrain::createDrawableForTile(gfx::Context
     // Ensure mesh is generated
     const auto& terrainMesh = getMesh(context);
 
-    if (terrainMesh.vertices.empty() || terrainMesh.indices.empty()) {
+    if (terrainMesh.vertices.empty() || terrainMesh.indexCount == 0) {
         Log::Error(Event::Render, "Terrain mesh is empty, cannot create drawable");
         return nullptr;
     }
@@ -1470,8 +1697,10 @@ std::unique_ptr<gfx::Drawable> RenderTerrain::createDrawableForTile(gfx::Context
     // Get terrain shader
     auto terrainShader = context.getGenericShader(shaders, depthPass ? "TerrainDepthShader" : "TerrainShader");
     if (!terrainShader) {
-        // The depth shader is not registered on all backends yet; symbols
-        // then sample the far-plane placeholder and stay visible
+        // The depth shader is registered on Metal, Vulkan and WebGPU, and the group size check in
+        // update() relies on that: a tile without its depth drawable would make the check start both
+        // groups over every frame. Were it missing all the same, symbols would sample the far-plane
+        // placeholder and stay visible.
         if (!depthPass) {
             Log::Error(Event::Render, "Terrain shader not found");
         }
@@ -1530,8 +1759,7 @@ std::unique_ptr<gfx::Drawable> RenderTerrain::createDrawableForTile(gfx::Context
                           terrainMesh.vertexCount, // vertex count
                           terrainMesh.indexCount); // index count
 
-    std::vector<uint16_t> indexData = terrainMesh.indices;
-    builder->setSegments(gfx::Triangles(), std::move(indexData), segments.data(), segments.size());
+    builder->setSegments(gfx::Triangles(), terrainMesh.indices, segments.data(), segments.size());
 
     // Set the DEM texture
     if (demTexture) {
@@ -1637,7 +1865,7 @@ void RenderTerrain::rebuildInstancedDepthDrawable(gfx::Context& context, gfx::Sh
     }
 
     const auto& depthMeshRef = getDepthMesh(context);
-    if (depthMeshRef.vertices.empty() || depthMeshRef.indices.empty()) {
+    if (depthMeshRef.vertices.empty() || depthMeshRef.indexCount == 0) {
         return;
     }
     auto shader = context.getGenericShader(shaders, "TerrainDepthShader");
@@ -1661,8 +1889,7 @@ void RenderTerrain::rebuildInstancedDepthDrawable(gfx::Context& context, gfx::Sh
 
     SegmentVector segs;
     segs.emplace_back(0, 0, depthMeshRef.vertexCount, depthMeshRef.indexCount);
-    std::vector<uint16_t> idx = depthMeshRef.indices;
-    builder->setSegments(gfx::Triangles(), std::move(idx), segs.data(), segs.size());
+    builder->setSegments(gfx::Triangles(), depthMeshRef.indices, segs.data(), segs.size());
 
     // Per-instance index attribute (divisor 1). Its element count is the instance count the
     // GL backend draws (drawInstanced uses instanceAttrs->getMinCount()).
@@ -1713,7 +1940,8 @@ void RenderTerrain::updateInstancedDepthUBO(PaintParameters& parameters) {
         arr[i].matrix = util::cast<float>(m);
         arr[i].dem_coords = inst.demCoords;
         arr[i].dem_layer = inst.demLayer;
-        arr[i].pad1 = arr[i].pad2 = arr[i].pad3 = 0.0f;
+        arr[i].skirt_edges = inst.skirtEdges;
+        arr[i].pad2 = arr[i].pad3 = 0.0f;
     }
     const std::size_t bytes = sizeof(shaders::TerrainDepthInstanceUBO) * maxDepthInstances;
     if (!depthInstanceUBO || depthInstanceUBO->getSize() < bytes) {
@@ -1727,7 +1955,13 @@ void RenderTerrain::updateInstancedDepthUBO(PaintParameters& parameters) {
     const float elevationOffset = static_cast<float>(util::M2PI * util::EARTH_RADIUS_M / std::pow(2.0, zoom) / 5.0);
     const shaders::TerrainEvaluatedPropsUBO propsUBO = {.unpack = getDEMUnpackVector(),
                                                         .exaggeration = getExaggeration(),
-                                                        .elevation_offset = elevationOffset};
+                                                        .elevation_offset = elevationOffset,
+                                                        .pad1 = 0.0f,
+                                                        .pad2 = 0.0f,
+                                                        .haze_color = {0.0f, 0.0f, 0.0f, 0.0f},
+                                                        .haze_ramp = {0.0f, 0.0f},
+                                                        .pad3 = 0.0f,
+                                                        .pad4 = 0.0f};
 
     depthLg->visitDrawables([&](gfx::Drawable& drawable) {
         auto& u = drawable.mutableUniformBuffers();

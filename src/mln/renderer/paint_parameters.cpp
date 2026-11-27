@@ -184,41 +184,45 @@ mat4 PaintParameters::clipMatrixForTile(const UnwrappedTileID& tileID) const {
     matrix::remapClipZToUnitRange(matrix);
 #endif
 
+#if MLN_RENDER_BACKEND_VULKAN
+    // Vulkan's clipping-mask vertex shader flips y for its framebuffer, but the draped geometry the masks
+    // clip is not flipped (applySurfaceTransform returns before its flip when drawing into a drape target).
+    // A mask for a tile that fills the target is the same either way; one placed in part of it (a tile of
+    // another zoom than the target's) landed mirrored and clipped the tile's content away. Flip here, so
+    // the shader's flip puts the mask where the geometry is.
+    mat4 flipY;
+    matrix::identity(flipY);
+    flipY[5] = -1.0;
+    matrix::multiply(matrix, flipY, matrix);
+#endif
+
     return matrix;
 }
 
-gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n,
-                                                     [[maybe_unused]] gfx::DepthMaskType mask) const {
-#if MLN_RENDER_BACKEND_OPENGL
-    if (currentLayer < opaquePassCutoff) {
+gfx::DepthMode PaintParameters::depthModeForSublayer([[maybe_unused]] uint8_t n, gfx::DepthMaskType mask) const {
+    // Avaris: no sublayer depths in a reversed pass (the main pass over terrain on Metal). The 3D
+    // range there is the whole of [0, 1] from 0 (see depthModeFor3D), so there is no band behind
+    // it to order 2D layers in, and nothing needs one: the draped layers are drawn in offscreen
+    // targets, which are never reversed, and what is left in the main pass (the sky first, then
+    // circles and symbols, which test the terrain in their shaders) is in painter's order.
+    if (currentLayer < opaquePassCutoff || reversedDepth) {
         return gfx::DepthMode::disabled();
     }
+
     float depth = depthRangeSize + ((1 + currentLayer) * numSublayers + n) * depthEpsilon;
     return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual, .mask = mask, .range = {depth, depth}};
-#else
-    // 2D drawables are ordered by the render passes (painter's order), and depth-testing them
-    // against each other is not reliable on these backends: the per-layer NDC z offset used to
-    // be folded into the drawable's float32 tile matrix (see LayerTweaker::multiplyWithProjectionMatrix),
-    // whose z translation runs to thousands of clip units under a pitched camera, so an offset of
-    // a few 1e-5 rounds away and the interpolated depths of overlapping polygons from different
-    // layers differ by vertex-rounding noise instead. At camera positions where that noise flips
-    // sign, a translucent fill above an opaque one fails the test and drops out for one frame
-    // (park and landcover fills flashing while navigating). GL is unaffected: its depth ranges
-    // do not go through the matrix.
-    return gfx::DepthMode::disabled();
-#endif
 }
 
 gfx::DepthMode PaintParameters::depthModeFor3D(gfx::DepthMaskType mask) const {
-#if MLN_RENDER_BACKEND_OPENGL
+    // Avaris: reversed, the range is all of [0, 1] and greater is nearer. It has to start at 0:
+    // the far end of a reversed float buffer is where its precision is, and a range that begins
+    // above 0 (the mirror of upstream's, {1 - depthRangeSize, 1}) adds that to every depth.
+    if (reversedDepth) {
+        return gfx::DepthMode{.func = gfx::DepthFunctionType::GreaterEqual, .mask = mask, .range = {0.0f, 1.0f}};
+    }
     return gfx::DepthMode{.func = gfx::DepthFunctionType::LessEqual,
                           .mask = mask,
                           .range = {0.0, depthRangeSize}};
-#else
-    return gfx::DepthMode{
-        .func = reversedDepth ? gfx::DepthFunctionType::GreaterEqual : gfx::DepthFunctionType::LessEqual,
-        .mask = mask};
-#endif
 }
 
 namespace {

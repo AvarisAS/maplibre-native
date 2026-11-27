@@ -97,13 +97,7 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
         if (terrainEnabled && !layerGroup.isSeaLevel()) {
             terrainData = parameters.terrain->getTerrainData(tileID);
         }
-        // Avaris: on a reversed depth buffer (Metal) a sea-level circle is tested as a symbol is,
-        // once, at its centre, against the terrain's packed depth, bound in the DEM slot it has
-        // no other use for; the shader reads dem_enabled == 2 (mtl/circle.hpp).
-        const bool seaCentreTest = terrainEnabled && layerGroup.isSeaLevel() && parameters.reversedDepth;
-        if (seaCentreTest) {
-            drawable.setTexture(parameters.terrain->getDepthTexture(context), idCircleDEMTexture);
-        } else if (parameters.terrain) {
+        if (parameters.terrain) {
             drawable.setTexture(
                 terrainData ? terrainData->demTexture : parameters.terrain->getPlaceholderDEMTexture(context),
                 idCircleDEMTexture);
@@ -112,11 +106,22 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
             drawable.setTexture(context.getPlaceholderTexture2D(), idCircleDEMTexture);
         }
 
+        // Circles hidden behind terrain: packed terrain depth, read by calculate_visibility in the
+        // vertex shader as symbols do (maplibre-gl-js does the same).
+        // Avaris: a sea-level circle is tested the same way, once, at its centre (a per-fragment
+        // depth test would cut the screen-facing quad in half along the ground under it). In a
+        // reversed pass its matrix carries a reversed [0, 1] clip z (LayerTweaker::getTileMatrix),
+        // and 2 tells the shader to turn it back to GL's before the test (mtl/circle.hpp).
+        float depthEnabled = 0.0f;
+        if (terrainEnabled) {
+            drawable.setTexture(parameters.terrain->getDepthTexture(context), idCircleDepthTexture);
+            depthEnabled = (layerGroup.isSeaLevel() && parameters.reversedDepth) ? 2.0f : 1.0f;
+        }
+
         // The terrain surface writes depth (so its skirts get occluded); circles
         // are elevated onto that surface and must not depth-test against it, or
         // they would be culled by the ground they sit on. Depth stays on without
-        // terrain. (Circles have no depth-texture occlusion path, so they simply
-        // draw on top of the terrain, as in maplibre-gl-js.)
+        // terrain. Their occlusion behind terrain comes from the depth texture above.
         drawable.setEnableDepth(!terrainEnabled);
 
 #if MLN_UBO_CONSOLIDATION
@@ -144,8 +149,8 @@ void CircleLayerTweaker::execute(LayerGroupBase& layerGroup, const PaintParamete
                                              : std::array<float, 4>{{0, 0, 0, 0}},
             .dem_dim = terrainData ? terrainData->demDim : 0.0f,
             .dem_exaggeration = parameters.terrain ? parameters.terrain->getExaggeration() : 0.0f,
-            .dem_enabled = seaCentreTest ? 2.0f : terrainData ? 1.0f : 0.0f,
-            .pad4 = 0
+            .dem_enabled = terrainData ? 1.0f : 0.0f,
+            .depth_enabled = depthEnabled
         };
 #if MLN_UBO_CONSOLIDATION
         drawable.setUBOIndex(i++);

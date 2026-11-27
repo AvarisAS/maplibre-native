@@ -46,6 +46,10 @@ struct FillPattern : CrossFadedDataDrivenPaintProperty<expression::Image, attrib
     static expression::Image defaultValue() { return {}; }
 };
 
+struct FillRoundedCornerDistance : PaintProperty<float> {
+    static float defaultValue() { return 0.f; }
+};
+
 struct FillTranslate : PaintProperty<std::array<float, 2>> {
     static std::array<float, 2> defaultValue() { return {{0.f, 0.f}}; }
 };
@@ -65,6 +69,7 @@ class FillPaintProperties : public Properties<
     FillOpacity,
     FillOutlineColor,
     FillPattern,
+    FillRoundedCornerDistance,
     FillTranslate,
     FillTranslateAnchor
 > {};

@@ -268,14 +268,14 @@ void Drawable::draw(PaintParameters& parameters) const {
                 impl->depthStencilState.reset();
             }
         }
+        const auto depthMode = seaDepth ? parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly)
+                               : getEnableDepth()
+                                   ? parameters.depthModeForSublayer(getSubLayerIndex(), getDepthType())
+                                   : gfx::DepthMode::disabled();
         if (!impl->depthStencilState) {
             if (enableStencil && !newStencilMode) {
                 newStencilMode = parameters.stencilModeForClipping(tileID->toUnwrapped());
             }
-            const auto depthMode = seaDepth ? parameters.depthModeFor3D(gfx::DepthMaskType::ReadOnly)
-                                   : getEnableDepth()
-                                       ? parameters.depthModeForSublayer(getSubLayerIndex(), getDepthType())
-                                       : gfx::DepthMode::disabled();
             impl->previousSeaDepth = seaDepth;
             const auto stencilMode = enableStencil ? parameters.stencilModeForClipping(tileID->toUnwrapped())
                                                    : gfx::StencilMode::disabled();
@@ -294,6 +294,9 @@ void Drawable::draw(PaintParameters& parameters) const {
         } else {
             encoder->setDepthBias(0.0f, 0.0f, 0.0f);
         }
+        renderPass.setDepthRange(depthMode.range);
+    } else {
+        renderPass.setDepthRange(parameters.depthModeFor3D().range);
     }
 
     for (const auto& seg_ : impl->segments) {
@@ -432,7 +435,8 @@ void Drawable::bindAttributes(RenderPass& renderPass) const {
                                                                                    : nullptr);
         if (buffer && buffer->get()) {
             assert(binding->vertexStride * impl->vertexCount <= getBufferSize(binding->vertexBufferResource));
-            renderPass.bindVertex(buffer->get(), /*offset=*/0, binding->bufferIndex);
+            const auto offset = static_cast<std::size_t>(binding->vertexOffset) * binding->vertexStride;
+            renderPass.bindVertex(buffer->get(), offset, binding->bufferIndex);
         }
     }
 }
@@ -442,7 +446,8 @@ void Drawable::bindInstanceAttributes(RenderPass& renderPass) const {
         if (binding.has_value()) {
             const auto* buffer = static_cast<const mtl::VertexBufferResource*>(binding->vertexBufferResource);
             if (buffer && buffer->get()) {
-                renderPass.bindVertex(buffer->get(), /*offset=*/0, binding->bufferIndex);
+                const auto offset = static_cast<std::size_t>(binding->vertexOffset) * binding->vertexStride;
+                renderPass.bindVertex(buffer->get(), offset, binding->bufferIndex);
             }
         }
     }
