@@ -181,3 +181,14 @@ this fork can merge `main`.
 - Built by hand like `.4` from `fffe53e2` (`--embed_label=maplibre_ios_7.0.0-avaris.5`, LICENSE.md
   in the zip), checksum `ea4a2e0c25859976ca91880086fa64870cd3b2a7bd28fc9245dcbdbaf5fe635a`.
   Release asset, Package.swift and tag `7.0.0-avaris.5` in AvarisAS/maplibre-native-distribution.
+
+## 7.0.0-avaris.8 (27.11.2026): reversed depth over terrain
+
+- Metal main pass uses reversed depth (clear 0, GreaterEqual) for the terrain mesh, sea-level
+  drawables and fill-extrusions while terrain is on; sea bias is slope-only (1/64 px). Low land
+  now hides the sea surface (was: the -32/-2 bias acted as a lift of tens of metres). Sea-level
+  circles are tested once at the centre against terrain depth. GL/Vulkan unchanged.
+- `TerrainSeaLevel.*` 8/8, terrain + renderer suites 274/274 (macOS Metal). Not on device at release.
+- Built by hand (the workflow has no `DISTRIBUTION_TOKEN`; its tag run was cancelled), checksum
+  `8239ce40341cc50361cb87766e6b692f062b4fd9e4fa8503c0e1a82f7134dbc2`. Release asset, Package.swift
+  and tag `7.0.0-avaris.8` in AvarisAS/maplibre-native-distribution. Built from 50415843ad88.
