@@ -203,6 +203,35 @@ Merged upstream `feature/terrain-3d` at `f22ec6fcb11fc729128e324134d5dff45dde89e
   `8239ce40341cc50361cb87766e6b692f062b4fd9e4fa8503c0e1a82f7134dbc2`. Release asset, Package.swift
   and tag `7.0.0-avaris.8` in AvarisAS/maplibre-native-distribution. Built from 50415843ad88.
 
+## 7.0.0-avaris.9 (27.11.2026): terrain-3d merge and sea-level circles on land
+
+- Contents: the terrain-3d merge (AvarisAS/maplibre-native PR #1, `a0282045`: upstream's #4868
+  depth ranges and DEM-texture rework composed with avaris.8's reversed depth, see the section
+  below) and the sea-level circle fix (`avaris/sea-circle-on-land`, `34ed8366`, merged as
+  `26ba4828`). A circle with `circle-elevation-reference: sea` whose centre is on land is hidden:
+  on Metal the shader also reads the DEM at the centre and multiplies visibility by
+  clamp(1 - land / 1 m, 0, 1). Land in front of the circle still hides it through the depth test.
+- Known gap: a circle tile coarser than the DEM has no DEM texture (#4868), so the DEM test is
+  skipped there. With a 256 px DEM that is z9–10 (circle tiles z9, DEM z10): a sea-level circle on
+  low land shows whole at ~z9.5, as before. The proper fix (keep an ancestor DEM in
+  RenderTerrain) was deferred so as not to diverge from upstream in its most active area; it can
+  come back only as an upstream contribution after a conversation with MapLibre members.
+  `TerrainSeaLevel.ACircleOnLowLandAboveTheDemZoomIsAKnownGap` pins today's behaviour.
+- Behaviour change, accepted: circles that are not at sea level now hide behind terrain, or behind
+  the seabed in front of them (upstream behaviour). In MarineCatch HQ the point-zone circle
+  (`mc-zones-point`, not a sea-level layer) vanishes over water seen across a shallow bank at
+  z16.5 (Reine, pitch 65, bearing 200), where avaris.8 drew it.
+- Tests (macOS Metal): `TerrainSeaLevel.*` 11/11; terrain + renderer set (filter
+  `*TransformState*:*Transform*:*Terrain*:*Sky*:*Collision*:*Placement*:*Symbol*:*Render*:*Circle*:*Shader*:*Drawable*:*Metal*-MainResourceLoader.SetResourceTransform`)
+  327/327, against 324/324 on `a0282045`. iOS sim check against avaris.8 (Reine, same cameras):
+  shoreline, shallow water, 3D boats and layer toggles match.
+- Built by hand like `.8` from `26ba482864e9` (`--embed_label=maplibre_ios_7.0.0-avaris.9`,
+  LICENSE.md in the zip), checksum
+  `14d8aaaad68653d5bbf5caef76bd930ef89a8aa0541658cdd912272cba210583`. Release asset,
+  Package.swift and tag `7.0.0-avaris.9` in AvarisAS/maplibre-native-distribution (`409a532a`);
+  tag `ios-v7.0.0-avaris.9` here. The distribution commit message abbreviates the source as
+  `26ba482864e9a2fa`, which is wrong past the twelfth digit; the release notes carry the full hash.
+
 ## Merge of avaris/main (7.0.0-avaris.8) into the terrain-3d merge, 2026-11-27
 
 Reversed depth composed with #4868's depth ranges:
